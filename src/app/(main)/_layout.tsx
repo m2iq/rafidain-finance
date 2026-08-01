@@ -15,27 +15,17 @@ export default function MainLayout() {
       <Tabs
         tabBar={(props) => <FloatingTabBar {...props} />}
         screenOptions={{
-          headerShown: true,
-          headerStyle: {
-            backgroundColor: theme.colors.background,
-            elevation: 0,
-            shadowOpacity: 0,
-          },
-          headerTitleStyle: {
-            fontFamily: 'Cairo_700Bold',
-            fontSize: 20,
-            color: theme.colors.onBackground,
-          },
-          headerTintColor: theme.colors.onBackground,
+          headerShown: false,
           contentStyle: {
             backgroundColor: theme.colors.background,
           },
         }}
       >
-        <Tabs.Screen name="index"     options={{ title: 'الرئيسية' }} />
-        <Tabs.Screen name="customers" options={{ title: 'العملاء' }} />
-        <Tabs.Screen name="debts"     options={{ title: 'الديون' }} />
-        <Tabs.Screen name="settings"  options={{ title: 'الإعدادات' }} />
+        <Tabs.Screen name="index"        options={{ title: 'الرئيسية' }} />
+        <Tabs.Screen name="customers"    options={{ title: 'العملاء' }} />
+        <Tabs.Screen name="debts"        options={{ title: 'الديون' }} />
+        <Tabs.Screen name="settings"     options={{ title: 'الإعدادات' }} />
+        <Tabs.Screen name="subscription" options={{ href: null, headerShown: false }} />
       </Tabs>
     </>
   );

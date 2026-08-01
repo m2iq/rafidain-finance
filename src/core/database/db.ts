@@ -24,6 +24,17 @@ export const initializeDatabase = () => {
       version INTEGER DEFAULT 1
     );
 
+    CREATE TABLE IF NOT EXISTS subscriptions (
+      id TEXT PRIMARY KEY,
+      store_id TEXT NOT NULL UNIQUE,
+      plan_tier TEXT DEFAULT 'free',
+      status TEXT DEFAULT 'active',
+      start_date TEXT NOT NULL,
+      end_date TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
     CREATE TABLE IF NOT EXISTS customers (
       id TEXT PRIMARY KEY,
       store_id TEXT,

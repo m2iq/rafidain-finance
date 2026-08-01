@@ -12,9 +12,11 @@ import { useRouter } from 'expo-router';
 import { LogIn } from 'lucide-react-native';
 import { UserRepository } from '../../core/database/repositories/UserRepository';
 import { useAppStore } from '../../core/store/appStore';
-import Animated, { FadeInDown, FadeIn } from 'react-native-reanimated';
+import Animated from 'react-native-reanimated';
 import AppInput from '../../shared/components/AppInput';
 import AppButton from '../../shared/components/AppButton';
+import AmbientBackground from '../../shared/components/AmbientBackground';
+import ar from '../../shared/i18n/ar';
 
 export default function LoginScreen() {
   const theme = useTheme();
@@ -27,8 +29,12 @@ export default function LoginScreen() {
   const [error, setError] = useState('');
 
   const handleLogin = async () => {
-    if (!phone.trim() || !password.trim()) {
-      setError('يرجى إدخال رقم الهاتف وكلمة المرور');
+    if (!phone.trim()) {
+      setError(ar.validation.phoneRequired);
+      return;
+    }
+    if (!password.trim()) {
+      setError(ar.validation.passwordRequired);
       return;
     }
     setLoading(true);
@@ -38,10 +44,10 @@ export default function LoginScreen() {
         setUser({ id: user.id, name: user.name, phone: user.phone, role: user.role });
         router.replace('/(main)');
       } else {
-        setError('رقم الهاتف أو كلمة المرور غير صحيحة');
+        setError(ar.validation.invalidCredentials);
       }
     } catch {
-      setError('حدث خطأ غير متوقع');
+      setError(ar.validation.unexpectedError);
     } finally {
       setLoading(false);
     }
@@ -52,75 +58,76 @@ export default function LoginScreen() {
       style={[styles.root, { backgroundColor: theme.colors.background }]}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
+      <AmbientBackground />
       <StatusBar
         barStyle={theme.dark ? 'light-content' : 'dark-content'}
-        backgroundColor={theme.colors.background}
+        backgroundColor="transparent"
+        translucent
       />
 
       <View style={styles.inner}>
-        {/* Brand */}
-        <Animated.View entering={FadeInDown.duration(500).springify()} style={styles.brand}>
+        {/* الهوية والتطبيق */}
+        <Animated.View style={styles.brand}>
           <View style={[styles.logo, { backgroundColor: theme.colors.primaryContainer }]}>
-            <LogIn size={30} color={theme.colors.primary} strokeWidth={2} />
+            <LogIn size={32} color={theme.colors.primary} strokeWidth={2} />
           </View>
           <Text
             variant="headlineMedium"
-            style={{ color: theme.colors.onBackground, textAlign: 'center' }}
+            style={{ color: theme.colors.onBackground, textAlign: 'center', fontFamily: 'Cairo_700Bold' }}
           >
-            مصرف الرافدين
+            {ar.login.title}
           </Text>
           <Text
             variant="bodyMedium"
-            style={{ color: theme.colors.outline, marginTop: 6, textAlign: 'center' }}
+            style={{ color: theme.colors.outline, marginTop: 6, textAlign: 'center', fontFamily: 'Cairo_400Regular' }}
           >
-            نظام إدارة الديون والأقساط
+            {ar.login.subtitle}
           </Text>
         </Animated.View>
 
-        {/* Card */}
+        {/* بطاقة تسجيل الدخول */}
         <Animated.View
-          entering={FadeInDown.delay(120).duration(500).springify()}
           style={[styles.card, { backgroundColor: theme.colors.surface, borderColor: theme.colors.outlineVariant }]}
         >
-          <Text variant="titleMedium" style={{ color: theme.colors.onSurface, marginBottom: 20 }}>
-            تسجيل الدخول
+          <Text variant="titleMedium" style={{ color: theme.colors.onSurface, marginBottom: 20, fontFamily: 'Cairo_700Bold' }}>
+            {ar.login.heading}
           </Text>
           <AppInput
-            label="رقم الهاتف"
+            label={ar.login.phoneLabel}
             icon="phone"
             value={phone}
             onChangeText={setPhone}
             keyboardType="phone-pad"
           />
-          <View style={{ height: 12 }} />
+          <View style={{ height: 14 }} />
           <AppInput
-            label="كلمة المرور"
+            label={ar.login.passwordLabel}
             icon="lock"
             value={password}
             onChangeText={setPassword}
             secureTextEntry
           />
           <TouchableOpacity style={styles.forgot} onPress={() => {}}>
-            <Text variant="labelMedium" style={{ color: theme.colors.primary }}>
-              نسيت كلمة المرور؟
+            <Text variant="labelMedium" style={{ color: theme.colors.primary, fontFamily: 'Cairo_600SemiBold' }}>
+              {ar.login.forgotPassword}
             </Text>
           </TouchableOpacity>
           <AppButton
-            label="دخول"
+            label={loading ? ar.login.loading : ar.login.loginBtn}
             onPress={handleLogin}
             loading={loading}
             disabled={loading}
           />
         </Animated.View>
 
-        {/* Register link */}
-        <Animated.View entering={FadeInDown.delay(250).duration(500)} style={styles.footer}>
-          <Text variant="bodyMedium" style={{ color: theme.colors.outline }}>
-            ليس لديك حساب؟{' '}
+        {/* رابط الإنشاء والتسجيل */}
+        <Animated.View style={styles.footer}>
+          <Text variant="bodyMedium" style={{ color: theme.colors.outline, fontFamily: 'Cairo_400Regular' }}>
+            {ar.login.noAccount}{' '}
           </Text>
           <TouchableOpacity onPress={() => router.push('/(auth)/register')}>
-            <Text variant="labelLarge" style={{ color: theme.colors.primary }}>
-              إنشاء حساب
+            <Text variant="labelLarge" style={{ color: theme.colors.primary, fontFamily: 'Cairo_700Bold' }}>
+              {ar.login.register}
             </Text>
           </TouchableOpacity>
         </Animated.View>
@@ -145,23 +152,28 @@ const styles = StyleSheet.create({
   inner: { flex: 1, padding: 24, justifyContent: 'center', gap: 20 },
   brand: { alignItems: 'center', marginBottom: 8 },
   logo: {
-    width: 72,
-    height: 72,
-    borderRadius: 22,
+    width: 76,
+    height: 76,
+    borderRadius: 24,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 14,
+    marginBottom: 16,
+    shadowColor: '#4F46E5',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 4,
   },
   card: {
-    borderRadius: 20,
+    borderRadius: 24,
     padding: 24,
     borderWidth: 1,
     shadowColor: '#1E1B4B',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.08,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.06,
     shadowRadius: 16,
-    elevation: 4,
+    elevation: 3,
   },
-  forgot: { alignSelf: 'flex-start', marginTop: 4, marginBottom: 16 },
+  forgot: { alignSelf: 'flex-start', marginTop: 6, marginBottom: 18 },
   footer: { flexDirection: 'row', justifyContent: 'center', marginTop: 8 },
 });

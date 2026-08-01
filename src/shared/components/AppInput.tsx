@@ -1,15 +1,15 @@
 import React, { useState } from 'react';
-import { View, StyleSheet, TextInput as RNTextInput, TouchableOpacity } from 'react-native';
+import { View, StyleSheet, TextInput as RNTextInput, TouchableOpacity, KeyboardTypeOptions } from 'react-native';
 import { useTheme, Text } from 'react-native-paper';
-import { Eye, EyeOff, Phone, Lock, User } from 'lucide-react-native';
+import { Eye, EyeOff, Phone, Lock, User, DollarSign, Calendar, ShoppingBag, MapPin } from 'lucide-react-native';
 
 interface AppInputProps {
   label: string;
-  icon?: 'phone' | 'lock' | 'user';
+  icon?: 'phone' | 'lock' | 'user' | 'dollar-sign' | 'calendar' | 'shopping-bag' | 'map-pin';
   value: string;
   onChangeText: (text: string) => void;
   secureTextEntry?: boolean;
-  keyboardType?: 'default' | 'phone-pad' | 'email-address';
+  keyboardType?: KeyboardTypeOptions;
   error?: string;
   placeholder?: string;
 }
@@ -18,6 +18,10 @@ const ICONS = {
   phone: Phone,
   lock: Lock,
   user: User,
+  'dollar-sign': DollarSign,
+  calendar: Calendar,
+  'shopping-bag': ShoppingBag,
+  'map-pin': MapPin,
 };
 
 export default function AppInput({

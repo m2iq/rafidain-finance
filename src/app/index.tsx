@@ -8,7 +8,8 @@ export default function Index() {
   const hasHydrated = useAppStore((s) => s._hasHydrated);
   const theme = useTheme();
 
-  // Wait for Zustand to rehydrate from AsyncStorage before deciding
+  // ننتظر حتى تكتمل استعادة بيانات التخزين قبل التوجيه
+  // بدون هذا، سيرى المستخدم شاشة الدخول في كل مرة يفتح فيها التطبيق
   if (!hasHydrated) {
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: theme.colors.background }}>
@@ -17,11 +18,11 @@ export default function Index() {
     );
   }
 
-  // If user session exists, go directly to main app
+  // إذا كانت الجلسة موجودة، انتقل مباشرة للتطبيق
   if (user) {
     return <Redirect href="/(main)" />;
   }
 
-  // No session → go to login
+  // لا توجد جلسة → شاشة تسجيل الدخول
   return <Redirect href="/(auth)/login" />;
 }

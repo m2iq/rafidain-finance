@@ -1,0 +1,202 @@
+/**
+ * ملف الترجمة العربية المركزي
+ * كل نص في التطبيق يُجلب من هنا لتسهيل إضافة لغات مستقبلاً
+ */
+
+export const ar = {
+  // ── التنقل ─────────────────────────────────────
+  nav: {
+    home: 'الرئيسية',
+    customers: 'العملاء',
+    debts: 'الديون',
+    settings: 'الإعدادات',
+  },
+
+  // ── الرئيسية ────────────────────────────────────
+  home: {
+    title: 'الرئيسية',
+    connected: 'متصل بالسحابة',
+    local: 'وضع محلي',
+    totalDebts: 'إجمالي الديون',
+    collected: 'تم التحصيل',
+    debtorCustomers: 'العملاء المدينون',
+    quickActions: 'الخدمات السريعة',
+    recentActivity: 'العمليات الأخيرة',
+    addCustomer: 'إضافة عميل',
+    addCustomerDesc: 'تسجيل مدين جديد',
+    addDebt: 'تسجيل دين',
+    addDebtDesc: 'إضافة فاتورة وقسط',
+    dueInstallments: 'الأقساط المستحقة',
+    dueInstallmentsDesc: 'أقساط تتطلب الإشعار',
+    reports: 'التقارير المالية',
+    reportsDesc: 'تحليل الأرباح والديون',
+    sync: 'مزامنة',
+  },
+
+  // ── العملاء ────────────────────────────────────
+  customers: {
+    title: 'العملاء',
+    search: 'ابحث بالاسم أو رقم الهاتف...',
+    totalLabel: 'العملاء',
+    withDebt: 'عليهم ديون',
+    paid: 'مسددون',
+    filterAll: 'الكل',
+    filterDebt: 'عليهم ديون',
+    filterPaid: 'مسددون',
+    noCustomers: 'لا يوجد عملاء بعد',
+    addCustomer: 'إضافة عميل',
+    settled: 'مسدد ✓',
+    emptyTitle: 'لا يوجد عملاء',
+    emptySubtitle: 'اضغط على + لإضافة أول عميل',
+  },
+
+  // ── الديون ────────────────────────────────────
+  debts: {
+    title: 'الديون',
+    search: 'ابحث باسم العميل أو تفاصيل الدين...',
+    totalActiveDebts: 'إجمالي الديون القائمة',
+    overdueInstallments: 'الأقساط المتأخرة',
+    dueThjisMonth: 'المستحق هذا الشهر',
+    filterAll: 'الكل',
+    filterActive: 'نشط (قيد السداد)',
+    filterOverdue: 'متأخر ⚠️',
+    filterPaid: 'مكتمل ✓',
+    statusActive: 'نشط',
+    statusOverdue: 'متأخر',
+    statusPaid: 'مكتمل',
+    paid: 'تم سداد:',
+    remaining: 'المتبقي:',
+    nextInstallment: 'القسط القادم:',
+    registerPayment: 'تسجيل دفعة',
+    addDebt: 'تسجيل دين جديد',
+    emptyTitle: 'لا يوجد ديون',
+    emptySubtitle: 'اضغط على + لتسجيل أول دين',
+  },
+
+  // ── الإعدادات ────────────────────────────────────
+  settings: {
+    title: 'الإعدادات',
+    profile: 'الملف الشخصي',
+    storeOwner: 'صاحب المحل',
+    ownerBadge: 'مالك المحل',
+    general: 'عام',
+    security: 'الأمان',
+    darkMode: 'الوضع الليلي',
+    notifications: 'الإشعارات',
+    notificationsDesc: 'تنبيهات الأقساط المستحقة',
+    cloudSync: 'المزامنة السحابية',
+    cloudSyncActive: 'نشطة — يتم المزامنة مع السحابة',
+    cloudSyncInactive: 'غير نشطة — وضع محلي',
+    changePassword: 'تغيير كلمة المرور',
+    helpCenter: 'مركز المساعدة',
+    logout: 'تسجيل الخروج',
+    logoutConfirm: 'هل تريد تسجيل الخروج؟',
+    about: 'حول التطبيق',
+    version: 'الإصدار',
+    subscription: 'باقة الاشتراك',
+  },
+
+  // ── الاشتراكات ────────────────────────────────────
+  subscription: {
+    title: 'الاشتراك',
+    currentPlan: 'خطتك الحالية',
+    choosePlan: 'اختر باقتك',
+    freePlan: 'المحلية المجانية',
+    freePlanDesc: 'للمحلات الصغيرة',
+    cloudMonthly: 'سحابية شهرية',
+    cloudYearly: 'سحابية سنوية',
+    cloudYearlySave: 'وفر 33%',
+    monthly: 'شهرياً',
+    yearly: 'سنوياً',
+    free: 'مجاني',
+    features: 'المميزات',
+    currentBadge: 'الحالي',
+    upgrade: 'ترقية',
+    subscribe: 'اشترك الآن',
+    active: 'فعال',
+    localOnly: 'تخزين محلي فقط',
+    cloudBackup: 'نسخ احتياطي سحابي',
+    multiDevice: 'دعم عدة أجهزة',
+    cloudReports: 'تقارير سحابية',
+    unlimitedCustomers: 'عملاء غير محدودين',
+    prioritySupport: 'دعم أولوية',
+  },
+
+  // ── تسجيل الدخول ──────────────────────────────
+  login: {
+    title: 'مصرف الرافدين',
+    subtitle: 'نظام إدارة الديون والأقساط',
+    heading: 'تسجيل الدخول',
+    phoneLabel: 'رقم الهاتف',
+    passwordLabel: 'كلمة المرور',
+    forgotPassword: 'نسيت كلمة المرور؟',
+    loginBtn: 'دخول',
+    noAccount: 'ليس لديك حساب؟',
+    register: 'إنشاء حساب',
+    loading: 'جارٍ التحقق...',
+  },
+
+  // ── إنشاء حساب ──────────────────────────────
+  register: {
+    title: 'إنشاء حساب',
+    subtitle: 'انضم لإدارة محلك باحترافية',
+    heading: 'بيانات الحساب',
+    nameLabel: 'الاسم الكامل',
+    phoneLabel: 'رقم الهاتف',
+    passwordLabel: 'كلمة المرور (6 أحرف على الأقل)',
+    registerBtn: 'إنشاء الحساب',
+    hasAccount: 'لديك حساب بالفعل؟',
+    login: 'تسجيل الدخول',
+    loading: 'جارٍ الإنشاء...',
+  },
+
+  // ── أخطاء التحقق ──────────────────────────────
+  validation: {
+    phoneRequired: 'يرجى إدخال رقم الهاتف',
+    passwordRequired: 'يرجى إدخال كلمة المرور',
+    allFieldsRequired: 'يرجى تعبئة جميع الحقول',
+    phoneMinLength: 'رقم الهاتف يجب أن يكون 10 أرقام على الأقل',
+    passwordMinLength: 'كلمة المرور يجب أن تكون 6 أحرف على الأقل',
+    invalidCredentials: 'رقم الهاتف أو كلمة المرور غير صحيحة',
+    unexpectedError: 'حدث خطأ غير متوقع، يرجى المحاولة مجدداً',
+    phoneAlreadyUsed: 'رقم الهاتف مستخدم مسبقاً',
+  },
+
+  // ── حالات الفراغ والتحميل ──────────────────────
+  common: {
+    loading: 'جارٍ التحميل...',
+    noData: 'لا توجد بيانات',
+    retry: 'إعادة المحاولة',
+    cancel: 'إلغاء',
+    confirm: 'تأكيد',
+    save: 'حفظ',
+    edit: 'تعديل',
+    delete: 'حذف',
+    search: 'بحث',
+    filter: 'تصفية',
+    all: 'الكل',
+    add: 'إضافة',
+    back: 'رجوع',
+    next: 'التالي',
+    done: 'تم',
+    close: 'إغلاق',
+    yes: 'نعم',
+    no: 'لا',
+    error: 'خطأ',
+    success: 'تم بنجاح',
+    warning: 'تحذير',
+    info: 'معلومة',
+    customer: 'عميل',
+    customers: 'عملاء',
+    amount: 'المبلغ',
+    date: 'التاريخ',
+    status: 'الحالة',
+    notes: 'ملاحظات',
+    phone: 'رقم الهاتف',
+    address: 'العنوان',
+    name: 'الاسم',
+  },
+};
+
+export type TranslationKeys = typeof ar;
+export default ar;

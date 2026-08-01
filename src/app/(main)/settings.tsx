@@ -1,14 +1,13 @@
 import React from 'react';
 import { View, StyleSheet, ScrollView, TouchableOpacity, StatusBar } from 'react-native';
 import { Text, useTheme, Divider, Switch, Avatar } from 'react-native-paper';
-import {
-  Moon, Globe, Shield, HelpCircle, LogOut, Bell, ChevronLeft, User,
-} from 'lucide-react-native';
+import { Moon, Globe, Shield, HelpCircle, LogOut, Bell, ChevronLeft, User, CreditCard } from 'lucide-react-native';
 import { useAppStore } from '../../core/store/appStore';
 import { useRouter } from 'expo-router';
-import Animated, { FadeInDown } from 'react-native-reanimated';
+import Animated from 'react-native-reanimated';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import ar from '../../shared/i18n/ar';
 
-// ── Settings Row ─────────────────────────────
 function SettingRow({
   title, description, Icon, iconBg, iconColor, right, onPress, danger,
 }: {
@@ -34,13 +33,13 @@ function SettingRow({
       <View style={styles.rowText}>
         <Text
           variant="titleSmall"
-          style={{ color: danger ? theme.colors.error : theme.colors.onSurface }}
+          style={{ color: danger ? theme.colors.error : theme.colors.onSurface, fontFamily: 'Cairo_700Bold' }}
           numberOfLines={1}
         >
           {title}
         </Text>
         {description && (
-          <Text variant="bodySmall" style={{ color: theme.colors.outline, marginTop: 1 }}>
+          <Text variant="bodySmall" style={{ color: theme.colors.outline, marginTop: 2, fontFamily: 'Cairo_400Regular' }}>
             {description}
           </Text>
         )}
@@ -54,7 +53,6 @@ function SettingRow({
   );
 }
 
-// ── Section wrapper ──────────────────────────
 function Section({ title, children }: { title?: string; children: React.ReactNode }) {
   const theme = useTheme();
   return (
@@ -62,7 +60,7 @@ function Section({ title, children }: { title?: string; children: React.ReactNod
       {title && (
         <Text
           variant="labelMedium"
-          style={{ color: theme.colors.outline, marginBottom: 8, marginHorizontal: 4, textTransform: 'uppercase' }}
+          style={{ color: theme.colors.outline, marginBottom: 8, marginHorizontal: 4, fontFamily: 'Cairo_600SemiBold' }}
         >
           {title}
         </Text>
@@ -74,22 +72,28 @@ function Section({ title, children }: { title?: string; children: React.ReactNod
   );
 }
 
-// ── Screen ───────────────────────────────────
 export default function SettingsScreen() {
-  const theme         = useTheme();
-  const router        = useRouter();
-  const user          = useAppStore((s) => s.user);
-  const clearUser     = useAppStore((s) => s.clearUser);
-  const isCloudMode   = useAppStore((s) => s.isCloudMode);
-  const toggleCloud   = useAppStore((s) => s.toggleCloudMode);
-  const isDarkMode    = useAppStore((s) => s.isDarkMode);
-  const toggleDark    = useAppStore((s) => s.toggleDarkMode);
+  const theme       = useTheme();
+  const router      = useRouter();
+  const insets      = useSafeAreaInsets();
+  const user        = useAppStore((s) => s.user);
+  const clearUser   = useAppStore((s) => s.clearUser);
+  const isCloudMode = useAppStore((s) => s.isCloudMode);
+  const toggleCloud = useAppStore((s) => s.toggleCloudMode);
+  const isDarkMode  = useAppStore((s) => s.isDarkMode);
+  const toggleDark  = useAppStore((s) => s.toggleDarkMode);
+  const hasActiveSubscription = useAppStore((s) => s.hasActiveSubscription);
   const [notif, setNotif] = React.useState(true);
+
+  const safeName = user?.name || ar.settings.storeOwner;
 
   return (
     <ScrollView
       style={[styles.container, { backgroundColor: theme.colors.background }]}
-      contentContainerStyle={styles.content}
+      contentContainerStyle={[
+        styles.content,
+        { paddingBottom: 90 + insets.bottom, paddingTop: Math.max(insets.top, 16) },
+      ]}
       showsVerticalScrollIndicator={false}
     >
       <StatusBar
@@ -97,37 +101,46 @@ export default function SettingsScreen() {
         backgroundColor={theme.colors.background}
       />
 
-      {/* Profile Card */}
-      <Animated.View entering={FadeInDown.duration(350)}>
+      <Animated.View>
         <View style={[styles.profileCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.outlineVariant }]}>
           <Avatar.Text
             size={58}
-            label={(user?.name ?? 'م').substring(0, 2)}
+            label={safeName.substring(0, 2)}
             style={{ backgroundColor: theme.colors.primaryContainer }}
             color={theme.colors.primary}
           />
           <View style={styles.profileInfo}>
-            <Text variant="titleMedium" style={{ color: theme.colors.onSurface }} numberOfLines={1}>
-              {user?.name ?? 'صاحب المحل'}
+            <Text variant="titleMedium" style={{ color: theme.colors.onSurface, fontFamily: 'Cairo_700Bold' }} numberOfLines={1}>
+              {safeName}
             </Text>
-            <Text variant="bodySmall" style={{ color: theme.colors.outline }}>
+            <Text variant="bodySmall" style={{ color: theme.colors.outline, marginTop: 2 }}>
               {user?.phone ?? '---'}
             </Text>
             <View style={[styles.roleBadge, { backgroundColor: theme.colors.primaryContainer }]}>
-              <Text variant="labelSmall" style={{ color: theme.colors.primary }}>مالك المحل</Text>
+              <Text variant="labelSmall" style={{ color: theme.colors.primary, fontFamily: 'Cairo_700Bold' }}>
+                {ar.settings.ownerBadge}
+              </Text>
             </View>
           </View>
           <TouchableOpacity style={[styles.editBtn, { borderColor: theme.colors.outlineVariant }]}>
-            <User size={16} color={theme.colors.primary} />
+            <User size={18} color={theme.colors.primary} />
           </TouchableOpacity>
         </View>
       </Animated.View>
 
-      {/* General */}
-      <Animated.View entering={FadeInDown.delay(80).duration(350)}>
-        <Section title="عام">
+      <Animated.View>
+        <Section title={ar.settings.general}>
           <SettingRow
-            title="الوضع الليلي"
+            title={ar.settings.subscription}
+            description={hasActiveSubscription ? "الباقة السحابية (الاحترافية)" : "الباقة المحلية (مجاني)"}
+            Icon={CreditCard}
+            iconBg={theme.colors.primaryContainer}
+            iconColor={theme.colors.primary}
+            onPress={() => router.push('/(main)/subscription')}
+          />
+          <Divider style={{ backgroundColor: theme.colors.outlineVariant }} />
+          <SettingRow
+            title={ar.settings.darkMode}
             Icon={Moon}
             iconBg={theme.colors.secondaryContainer}
             iconColor={theme.colors.secondary}
@@ -135,8 +148,8 @@ export default function SettingsScreen() {
           />
           <Divider style={{ backgroundColor: theme.colors.outlineVariant }} />
           <SettingRow
-            title="الإشعارات"
-            description="تنبيهات الأقساط المستحقة"
+            title={ar.settings.notifications}
+            description={ar.settings.notificationsDesc}
             Icon={Bell}
             iconBg={theme.colors.tertiaryContainer}
             iconColor={theme.colors.tertiary}
@@ -144,8 +157,8 @@ export default function SettingsScreen() {
           />
           <Divider style={{ backgroundColor: theme.colors.outlineVariant }} />
           <SettingRow
-            title="المزامنة السحابية"
-            description={isCloudMode ? 'نشطة — يتم المزامنة مع Supabase' : 'غير نشطة — وضع محلي'}
+            title={ar.settings.cloudSync}
+            description={isCloudMode ? ar.settings.cloudSyncActive : ar.settings.cloudSyncInactive}
             Icon={Globe}
             iconBg={isCloudMode ? '#DCFCE7' : theme.colors.surfaceVariant}
             iconColor={isCloudMode ? '#16A34A' : theme.colors.outline}
@@ -154,17 +167,16 @@ export default function SettingsScreen() {
         </Section>
       </Animated.View>
 
-      {/* Security */}
-      <Animated.View entering={FadeInDown.delay(160).duration(350)}>
-        <Section title="الأمان">
+      <Animated.View>
+        <Section title={ar.settings.security}>
           <SettingRow
-            title="تغيير كلمة المرور"
+            title={ar.settings.changePassword}
             Icon={Shield}
             onPress={() => {}}
           />
           <Divider style={{ backgroundColor: theme.colors.outlineVariant }} />
           <SettingRow
-            title="مركز المساعدة"
+            title={ar.settings.helpCenter}
             Icon={HelpCircle}
             iconBg={theme.colors.tertiaryContainer}
             iconColor={theme.colors.tertiary}
@@ -173,14 +185,16 @@ export default function SettingsScreen() {
         </Section>
       </Animated.View>
 
-      {/* Logout */}
-      <Animated.View entering={FadeInDown.delay(240).duration(350)}>
+      <Animated.View>
         <Section>
           <SettingRow
-            title="تسجيل خروج"
+            title={ar.settings.logout}
             Icon={LogOut}
             danger
-            onPress={() => { clearUser(); router.replace('/(auth)/login'); }}
+            onPress={() => {
+              clearUser();
+              router.replace('/(auth)/login');
+            }}
           />
         </Section>
       </Animated.View>
@@ -190,19 +204,19 @@ export default function SettingsScreen() {
 
 const styles = StyleSheet.create({
   container:   { flex: 1 },
-  content:     { padding: 16, paddingBottom: 110, gap: 0 },
+  content:     { padding: 16 },
   profileCard: {
-    flexDirection: 'row', alignItems: 'center', gap: 14,
-    padding: 16, borderRadius: 20, borderWidth: 1,
+    flexDirection: 'row', alignItems: 'center',
+    padding: 16, borderRadius: 24, borderWidth: 1,
     marginBottom: 20,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 2,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.04, shadowRadius: 10, elevation: 2,
   },
-  profileInfo: { flex: 1 },
+  profileInfo: { flex: 1, paddingHorizontal: 14 },
   roleBadge:   { alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 3, borderRadius: 20, marginTop: 6 },
-  editBtn:     { width: 36, height: 36, borderRadius: 12, borderWidth: 1, justifyContent: 'center', alignItems: 'center' },
+  editBtn:     { width: 38, height: 38, borderRadius: 14, borderWidth: 1, justifyContent: 'center', alignItems: 'center' },
   section:     { marginBottom: 16 },
-  sectionCard: { borderRadius: 16, borderWidth: 1, overflow: 'hidden' },
-  row:         { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 14, gap: 12 },
-  rowIcon:     { width: 36, height: 36, borderRadius: 10, justifyContent: 'center', alignItems: 'center' },
-  rowText:     { flex: 1 },
+  sectionCard: { borderRadius: 20, borderWidth: 1, overflow: 'hidden' },
+  row:         { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 14 },
+  rowIcon:     { width: 38, height: 38, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
+  rowText:     { flex: 1, paddingHorizontal: 12 },
 });

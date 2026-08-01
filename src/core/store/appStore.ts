@@ -2,19 +2,6 @@ import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const zustandStorage = {
-  setItem: async (name: string, value: string) => {
-    return await AsyncStorage.setItem(name, value);
-  },
-  getItem: async (name: string) => {
-    const value = await AsyncStorage.getItem(name);
-    return value ?? null;
-  },
-  removeItem: async (name: string) => {
-    return await AsyncStorage.removeItem(name);
-  },
-};
-
 export interface AppUser {
   id: string;
   name: string;
@@ -62,9 +49,19 @@ export const useAppStore = create<AppState>()(
     }),
     {
       name: 'app-storage',
-      storage: createJSONStorage(() => zustandStorage),
+      storage: createJSONStorage(() => AsyncStorage),
+      // نستثني _hasHydrated من الحفظ لأنها قيمة runtime فقط
+      partialize: (state) => ({
+        isCloudMode: state.isCloudMode,
+        isDarkMode: state.isDarkMode,
+        user: state.user,
+        hasActiveSubscription: state.hasActiveSubscription,
+      }),
       onRehydrateStorage: () => (state) => {
-        state?.setHasHydrated(true);
+        // يُستدعى عند اكتمال استعادة البيانات من التخزين
+        if (state) {
+          state.setHasHydrated(true);
+        }
       },
     }
   )

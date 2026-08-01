@@ -1,16 +1,8 @@
+import React from 'react';
 import { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { CreditCard, LayoutDashboard, Settings, Users } from 'lucide-react-native';
-import { useEffect } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { Text, useTheme } from 'react-native-paper';
-import Animated, {
-  interpolate,
-  useAnimatedStyle,
-  useDerivedValue,
-  useSharedValue,
-  withSpring,
-  withTiming,
-} from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const TAB_ICONS: Record<string, any> = {
@@ -32,12 +24,12 @@ const ICON_SIZE = 22;
 
 function TabItem({
   routeName,
-  progress,
+  isFocused,
   onPress,
   onLongPress,
 }: {
   routeName: string;
-  progress: Animated.DerivedValue<number>;
+  isFocused: boolean;
   onPress: () => void;
   onLongPress: () => void;
 }) {
@@ -45,75 +37,56 @@ function TabItem({
   const Icon = TAB_ICONS[routeName] || LayoutDashboard;
   const label = TAB_LABELS[routeName] || routeName;
 
-  // Active Pill Background
-  const pillBg = useAnimatedStyle(() => ({
-    opacity: withTiming(progress.value, { duration: 200 }),
-    transform: [{ scale: withSpring(interpolate(progress.value, [0, 1], [0.85, 1]), { damping: 15 }) }],
-  }));
-
-  // Active Icon
-  const activeIconStyle = useAnimatedStyle(() => ({
-    opacity: withTiming(progress.value, { duration: 180 }),
-    transform: [{ scale: withSpring(interpolate(progress.value, [0, 1], [0.8, 1]), { damping: 14 }) }],
-  }));
-
-  // Inactive Icon
-  const inactiveIconStyle = useAnimatedStyle(() => ({
-    opacity: withTiming(1 - progress.value, { duration: 180 }),
-  }));
-
-  // Label animation
-  const labelStyle = useAnimatedStyle(() => ({
-    opacity: withTiming(progress.value, { duration: 180 }),
-    transform: [{ translateY: withTiming(progress.value === 1 ? 0 : 3, { duration: 180 }) }],
-  }));
-
   return (
     <Pressable onPress={onPress} onLongPress={onLongPress} style={styles.item} hitSlop={4}>
       {/* Pill Highlight */}
-      <Animated.View
-        style={[
-          styles.pill,
-          { backgroundColor: theme.colors.primaryContainer },
-          pillBg,
-        ]}
-      />
+      {isFocused && (
+        <View
+          style={[
+            styles.pill,
+            { backgroundColor: theme.colors.primaryContainer },
+          ]}
+        />
+      )}
 
       {/* Stacked Icons */}
       <View style={styles.iconWrap}>
-        <Animated.View style={[StyleSheet.absoluteFill, styles.center, inactiveIconStyle]}>
-          <Icon size={ICON_SIZE} color={theme.colors.outline} strokeWidth={1.8} />
-        </Animated.View>
-        <Animated.View style={[StyleSheet.absoluteFill, styles.center, activeIconStyle]}>
-          <Icon size={ICON_SIZE} color={theme.colors.primary} strokeWidth={2.4} />
-        </Animated.View>
+        <Icon 
+          size={ICON_SIZE} 
+          color={isFocused ? theme.colors.primary : theme.colors.outline} 
+          strokeWidth={isFocused ? 2.4 : 1.8} 
+        />
       </View>
 
       {/* Label */}
-      <Animated.View style={[styles.labelWrap, labelStyle]}>
-        <Text numberOfLines={1} style={[styles.label, { color: theme.colors.primary }]}>
+      <View style={styles.labelWrap}>
+        <Text 
+          numberOfLines={1} 
+          style={[
+            styles.label, 
+            { 
+              color: isFocused ? theme.colors.primary : theme.colors.outline,
+              fontFamily: isFocused ? 'Cairo_700Bold' : 'Cairo_600SemiBold'
+            }
+          ]}
+        >
           {label}
         </Text>
-      </Animated.View>
+      </View>
     </Pressable>
   );
 }
 
-export default function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
+export default function FloatingTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
 
-  const activeIdx = useSharedValue(state.index);
-
-  useEffect(() => {
-    activeIdx.value = state.index;
-  }, [state.index]);
-
-  const p0 = useDerivedValue(() => (activeIdx.value === 0 ? 1 : 0));
-  const p1 = useDerivedValue(() => (activeIdx.value === 1 ? 1 : 0));
-  const p2 = useDerivedValue(() => (activeIdx.value === 2 ? 1 : 0));
-  const p3 = useDerivedValue(() => (activeIdx.value === 3 ? 1 : 0));
-  const progressValues = [p0, p1, p2, p3];
+  // Filter out routes that are marked with href: null or named subscription
+  const visibleRoutes = state.routes.filter((route) => {
+    if (route.name === 'subscription') return false;
+    const { options } = descriptors[route.key];
+    return options?.href !== null;
+  });
 
   return (
     <View
@@ -130,19 +103,23 @@ export default function FloatingTabBar({ state, navigation }: BottomTabBarProps)
           },
         ]}
       >
-        {state.routes.map((route, index) => (
-          <TabItem
-            key={route.key}
-            routeName={route.name}
-            progress={progressValues[index]}
-            onPress={() => {
-              const isFocused = state.index === index;
-              const event = navigation.emit({ type: 'tabPress', target: route.key, canPreventDefault: true });
-              if (!isFocused && !event.defaultPrevented) navigation.navigate(route.name);
-            }}
-            onLongPress={() => navigation.emit({ type: 'tabLongPress', target: route.key })}
-          />
-        ))}
+        {visibleRoutes.map((route) => {
+          const index = state.routes.findIndex((r) => r.key === route.key);
+          const isFocused = state.index === index;
+
+          return (
+            <TabItem
+              key={route.key}
+              routeName={route.name}
+              isFocused={isFocused}
+              onPress={() => {
+                const event = navigation.emit({ type: 'tabPress', target: route.key, canPreventDefault: true });
+                if (!isFocused && !event.defaultPrevented) navigation.navigate(route.name);
+              }}
+              onLongPress={() => navigation.emit({ type: 'tabLongPress', target: route.key })}
+            />
+          );
+        })}
       </View>
     </View>
   );
@@ -178,10 +155,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingVertical: 4,
   },
-  center: {
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
   pill: {
     position: 'absolute',
     top: 4,
@@ -204,9 +177,8 @@ const styles = StyleSheet.create({
   },
   label: {
     fontSize: 12,
-    fontFamily: 'Cairo_600SemiBold',
     includeFontPadding: false,
     textAlign: 'center',
-    marginTop: -3
+    marginTop: -3,
   },
 });

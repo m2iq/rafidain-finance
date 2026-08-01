@@ -22,6 +22,21 @@ CREATE TABLE IF NOT EXISTS public.users (
 );
 
 -- ==========================================
+-- SUBSCRIPTIONS
+-- ==========================================
+CREATE TABLE IF NOT EXISTS public.subscriptions (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  store_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE UNIQUE,
+  plan_tier TEXT NOT NULL DEFAULT 'free' CHECK (plan_tier IN ('free', 'cloud_monthly', 'cloud_yearly')),
+  status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'expired', 'cancelled')),
+  start_date TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  end_date TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+
+-- ==========================================
 -- CUSTOMERS
 -- ==========================================
 CREATE TABLE IF NOT EXISTS public.customers (
@@ -127,6 +142,11 @@ ALTER TABLE public.payments ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "users_self_policy" ON public.users
   FOR ALL USING (auth.uid() = id);
 
+-- Subscriptions are accessible by the store owner
+ALTER TABLE public.subscriptions ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "subscriptions_owner_policy" ON public.subscriptions
+  FOR ALL USING (auth.uid() = store_id);
+
 -- Customers belong to the authenticated store owner
 CREATE POLICY "customers_owner_policy" ON public.customers
   FOR ALL USING (auth.uid() = store_id);
@@ -163,6 +183,7 @@ END;
 $$ LANGUAGE plpgsql;
 
 CREATE TRIGGER trg_users_updated BEFORE UPDATE ON public.users FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER trg_subscriptions_updated BEFORE UPDATE ON public.subscriptions FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER trg_customers_updated BEFORE UPDATE ON public.customers FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER trg_debts_updated BEFORE UPDATE ON public.debts FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER trg_installments_updated BEFORE UPDATE ON public.installments FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
