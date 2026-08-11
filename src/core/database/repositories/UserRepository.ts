@@ -2,6 +2,8 @@ import * as Crypto from 'expo-crypto';
 import { randomUUID } from 'expo-crypto';
 import { supabase } from '../../supabase/supabaseClient';
 import { db } from '../db';
+import { useAppStore } from '../../store/appStore';
+import { syncFromCloud, checkLiveSubscription } from '../../supabase/syncService';
 
 export interface User {
   id: string;
@@ -49,8 +51,9 @@ export class UserRepository {
     phone: string;
     password_plaintext: string;
   }): Promise<User> {
+    const cleanPhone = user.phone.trim();
     // منع التكرار محلياً
-    if (this.getByPhone(user.phone)) {
+    if (this.getByPhone(cleanPhone)) {
       throw new Error('رقم الهاتف مستخدم مسبقاً');
     }
 
@@ -61,20 +64,20 @@ export class UserRepository {
     let finalId = randomUUID();
 
     try {
-      const fakeEmail = `${user.phone.replace(/\D/g, '')}@rafidain.local`;
+      const fakeEmail = `${cleanPhone.replace(/\D/g, '')}@rafidain.local`;
 
-      // محاولة signUp - إذا كان المستخدم موجوداً أصلاً (rate limit) نحاول signIn
+      // محاولة signUp - إذا كان المستخدم موجوداً أصلاً نحول العملية لتنبيه
       let authUserId: string | null = null;
 
       const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
         email: fakeEmail,
         password: user.password_plaintext,
-        options: { data: { name: user.name, phone: user.phone } },
+        options: { data: { name: user.name, phone: cleanPhone } },
       });
 
       if (signUpError) {
         console.warn('[UserRepository] signUp error:', signUpError.message);
-        // عند rate limit أو مشكلة أخرى، نجرب signIn كحل بديل
+        // تجربة signIn في حال عدم اكتمال إنشاء الحساب سابقاً
         const { data: signInData } = await supabase.auth.signInWithPassword({
           email: fakeEmail,
           password: user.password_plaintext,
@@ -82,6 +85,12 @@ export class UserRepository {
         if (signInData.user?.id) {
           authUserId = signInData.user.id;
           console.log('[UserRepository] Got existing Auth UID via signIn:', authUserId);
+        } else if (
+          signUpError.message.includes('already registered') ||
+          signUpError.message.includes('already exists') ||
+          signUpError.message.includes('User already registered')
+        ) {
+          throw new Error('رقم الهاتف مسجل مسبقاً، يرجى تسجيل الدخول بدلاً من إنشاء حساب جديد');
         }
       } else if (signUpData.user?.id) {
         authUserId = signUpData.user.id;
@@ -90,13 +99,14 @@ export class UserRepository {
 
       if (authUserId) {
         finalId = authUserId;
+        useAppStore.getState().setCloudMode(true);
 
         // رفع بيانات المستخدم لجدول users
         const { error: upsertError } = await supabase.from('users').upsert(
           {
             id: finalId,
             name: user.name,
-            phone: user.phone,
+            phone: cleanPhone,
             password_hash,
             role: 'owner',
             status: 'active',
@@ -127,6 +137,9 @@ export class UserRepository {
         }
       }
     } catch (cloudErr: any) {
+      if (cloudErr.message?.includes('رقم الهاتف مسجل مسبقاً')) {
+        throw cloudErr;
+      }
       console.warn('[UserRepository] Cloud sync skipped (offline?):', cloudErr?.message ?? cloudErr);
     }
 
@@ -135,7 +148,7 @@ export class UserRepository {
       `INSERT OR REPLACE INTO users 
          (id, name, phone, password_hash, role, status, created_at, updated_at, version)
        VALUES (?, ?, ?, ?, 'owner', 'active', ?, ?, 1)`,
-      [finalId, user.name, user.phone, password_hash, now, now]
+      [finalId, user.name, cleanPhone, password_hash, now, now]
     );
 
     // الخطوة 5: إضافة للـ sync_queue للمزامنة لاحقاً عند وجود إنترنت
@@ -152,34 +165,127 @@ export class UserRepository {
   /**
    * التحقق من كلمة المرور وتسجيل الدخول.
    * - يتحقق أولاً من SQLite المحلي (يعمل بدون إنترنت).
-   * - يحاول تسجيل الدخول السحابي إن أمكن.
+   * - إذا لم يجد الحساب محلياً أو تغيرت الكلمة، يتصل بـ Supabase للتحقق وجلب الحساب والمزامنة للجهاز الجديد.
    */
   static async verifyPassword(
     phone: string,
     password_plaintext: string
   ): Promise<User | null> {
-    const user = this.getByPhone(phone);
-    if (!user) return null;
-
+    const cleanPhone = phone.trim();
     const hash = await this.hashPassword(password_plaintext);
-    if (user.password_hash !== hash) return null;
+    const localUser = this.getByPhone(cleanPhone);
 
-    // محاولة تسجيل الدخول السحابي لتحديث الـ session (لا يعطل الدخول المحلي)
+    // الحالة 1: الحساب موجود في قاعدة البيانات المحلية وكلمة المرور صحيحة محلياً
+    if (localUser && localUser.password_hash === hash) {
+      try {
+        const fakeEmail = `${cleanPhone.replace(/\D/g, '')}@rafidain.local`;
+        const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+          email: fakeEmail,
+          password: password_plaintext,
+        });
+
+        if (!authError && authData.user) {
+          console.log('[UserRepository] Cloud session established for local user ✓');
+          useAppStore.getState().setCloudMode(true);
+          // سحب تحديثات البيانات من السحابة في الخلفية
+          syncFromCloud(localUser.id).catch((err) =>
+            console.warn('[UserRepository] Cloud sync background error:', err)
+          );
+          checkLiveSubscription(localUser.id).catch((err) =>
+            console.warn('[UserRepository] Subscription check background error:', err)
+          );
+        }
+      } catch (cloudErr: any) {
+        console.warn('[UserRepository] Offline mode login:', cloudErr?.message ?? cloudErr);
+      }
+
+      return localUser;
+    }
+
+    // الحالة 2: الحساب غير موجود محلياً (مثلاً جهاز جديد) أو تم تغيير كلمة المرور عبر السحابة
     try {
-      const fakeEmail = `${phone.replace(/\D/g, '')}@rafidain.local`;
-      const { error } = await supabase.auth.signInWithPassword({
+      const fakeEmail = `${cleanPhone.replace(/\D/g, '')}@rafidain.local`;
+      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
         email: fakeEmail,
         password: password_plaintext,
       });
-      if (error) {
-        console.warn('[UserRepository] Cloud login skipped:', error.message);
-      } else {
-        console.log('[UserRepository] Cloud session established ✓');
-      }
-    } catch (cloudErr: any) {
-      console.warn('[UserRepository] Offline login mode:', cloudErr?.message ?? cloudErr);
-    }
 
-    return user;
+      if (authError || !authData.user) {
+        console.warn('[UserRepository] Cloud authentication failed:', authError?.message);
+        return null;
+      }
+
+      const authUserId = authData.user.id;
+      console.log('[UserRepository] Cloud auth successful for ID:', authUserId);
+
+      // جلب صف المستخدم من جدول users في السحابة
+      let { data: cloudUser } = await supabase
+        .from('users')
+        .select('*')
+        .eq('id', authUserId)
+        .maybeSingle();
+
+      if (!cloudUser) {
+        const { data: cloudUserByPhone } = await supabase
+          .from('users')
+          .select('*')
+          .eq('phone', cleanPhone)
+          .maybeSingle();
+        cloudUser = cloudUserByPhone;
+      }
+
+      const now = new Date().toISOString();
+      const userToSave: User = {
+        id: authUserId,
+        name: cloudUser?.name || (authData.user.user_metadata?.name as string) || 'تاجر',
+        phone: cloudUser?.phone || cleanPhone,
+        password_hash: cloudUser?.password_hash || hash,
+        role: cloudUser?.role || 'owner',
+        status: cloudUser?.status || 'active',
+        created_at: cloudUser?.created_at || now,
+        updated_at: cloudUser?.updated_at || now,
+        deleted_at: cloudUser?.deleted_at || null,
+        version: cloudUser?.version || 1,
+      };
+
+      // حفظ الحساب في SQLite المحلي للجهاز الجديد
+      db.runSync(
+        `INSERT OR REPLACE INTO users 
+           (id, name, phone, password_hash, role, status, created_at, updated_at, deleted_at, version)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          userToSave.id,
+          userToSave.name,
+          userToSave.phone,
+          userToSave.password_hash,
+          userToSave.role,
+          userToSave.status,
+          userToSave.created_at,
+          userToSave.updated_at,
+          userToSave.deleted_at,
+          userToSave.version,
+        ]
+      );
+
+      console.log('[UserRepository] User stored in local SQLite from cloud ✓', userToSave.id);
+
+      // تفعيل النمط السحابي
+      useAppStore.getState().setCloudMode(true);
+
+      // جلب كافة بيانات التاجر من السحابة إلى قاعدة البيانات المحلية (العملاء، الديون، المدفوعات...)
+      try {
+        await syncFromCloud(userToSave.id);
+        await checkLiveSubscription(userToSave.id);
+        console.log('[UserRepository] Full cloud dataset synced to local device ✓');
+      } catch (syncErr) {
+        console.warn('[UserRepository] Sync after cloud login encountered issue:', syncErr);
+      }
+
+      return userToSave;
+    } catch (err: any) {
+      console.warn('[UserRepository] Cloud login exception:', err?.message ?? err);
+      return null;
+    }
   }
 }
+

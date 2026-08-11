@@ -328,7 +328,7 @@ export async function syncToCloud(storeId: string): Promise<void> {
 // Sync: Pull Cloud data → Local SQLite
 // ============================================
 export async function syncFromCloud(storeId: string): Promise<void> {
-  const tables = ['customers', 'debts', 'installments', 'payments'];
+  const tables = ['subscriptions', 'customers', 'debts', 'installments', 'payments'];
 
   for (const table of tables) {
     try {

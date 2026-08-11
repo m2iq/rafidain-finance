@@ -296,7 +296,13 @@ export default function SettingsScreen() {
             title={ar.settings.logout}
             Icon={LogOut}
             danger
-            onPress={() => {
+            onPress={async () => {
+              const { logoutFromCloud } = require('../../core/supabase/syncService');
+              try {
+                await logoutFromCloud();
+              } catch (e) {
+                console.warn('[Logout] Cloud logout error:', e);
+              }
               clearUser();
               router.replace('/(auth)/login');
             }}
