@@ -332,6 +332,10 @@ export async function syncFromCloud(storeId: string): Promise<void> {
 
   for (const table of tables) {
     try {
+      // 1. معرفة أسماء الأعمدة الموجودة في الجدول المحلي فعلياً
+      const tableInfo = db.getAllSync<{ name: string }>(`PRAGMA table_info(${table})`);
+      const validLocalCols = new Set(tableInfo.map((col) => col.name));
+
       const { data, error } = await supabase
         .from(table)
         .select('*')
@@ -343,21 +347,34 @@ export async function syncFromCloud(storeId: string): Promise<void> {
       if (!data || data.length === 0) continue;
 
       for (const row of data) {
-        const local = db.getFirstSync<any>(`SELECT version, updated_at FROM ${table} WHERE id = ?`, [row.id]);
+        const local = db.getFirstSync<any>(`SELECT updated_at FROM ${table} WHERE id = ?`, [row.id]);
 
-        if (!local || new Date(row.updated_at) > new Date(local.updated_at)) {
-          // The local `payments.date` column is NOT NULL but doesn't exist in the cloud
-          // schema (cloud only has `payment_date`) — backfill it so the insert doesn't fail.
-          const localRow: Record<string, any> =
-            table === 'payments' && row.date === undefined
-              ? { ...row, date: row.payment_date }
-              : row;
+        if (!local || !local.updated_at || new Date(row.updated_at) > new Date(local.updated_at)) {
+          const fullRow: Record<string, any> = { ...row };
 
-          const columns = Object.keys(localRow).join(', ');
-          const placeholders = Object.keys(localRow).map(() => '?').join(', ');
-          const values = Object.values(localRow);
+          // معالجة الحقل غير الموجود بالسحابة لجدول المدفوعات local `payments.date`
+          if (table === 'payments' && fullRow.date === undefined) {
+            fullRow.date = fullRow.payment_date || fullRow.created_at || new Date().toISOString();
+          }
 
-          db.runSync(`REPLACE INTO ${table} (${columns}) VALUES (${placeholders})`, values as SQLite.SQLiteBindValue[]);
+          // تصفية الأعمدة المطابقة فقط لقاعدة البيانات المحلية لتجنب "no column named"
+          const filteredRow: Record<string, any> = {};
+          for (const key of Object.keys(fullRow)) {
+            if (validLocalCols.has(key)) {
+              filteredRow[key] = fullRow[key];
+            }
+          }
+
+          const columns = Object.keys(filteredRow).join(', ');
+          const placeholders = Object.keys(filteredRow).map(() => '?').join(', ');
+          const values = Object.values(filteredRow);
+
+          if (columns.length > 0) {
+            db.runSync(
+              `REPLACE INTO ${table} (${columns}) VALUES (${placeholders})`,
+              values as SQLite.SQLiteBindValue[]
+            );
+          }
         }
       }
     } catch (err) {

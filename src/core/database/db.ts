@@ -161,6 +161,7 @@ export const initializeDatabase = () => {
       { table: 'payments', col: 'payment_method', def: 'TEXT DEFAULT "cash"' },
       { table: 'payments', col: 'date', def: 'TEXT DEFAULT "2024-01-01"' },
       { table: 'payments', col: 'notes', def: 'TEXT' },
+      { table: 'subscriptions', col: 'version', def: 'INTEGER DEFAULT 1' },
       { table: 'sync_queue', col: 'synced_at', def: 'TEXT' },
     ];
 
