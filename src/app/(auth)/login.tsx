@@ -46,8 +46,8 @@ export default function LoginScreen() {
       } else {
         setError(ar.validation.invalidCredentials);
       }
-    } catch {
-      setError(ar.validation.unexpectedError);
+    } catch (err: any) {
+      setError(err?.message || ar.validation.invalidCredentials);
     } finally {
       setLoading(false);
     }

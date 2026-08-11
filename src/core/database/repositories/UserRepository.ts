@@ -18,11 +18,29 @@ export interface User {
   version: number;
 }
 
+export function normalizePhone(phone: string): string {
+  if (!phone) return '';
+  return phone
+    .replace(/[٠۰]/g, '0')
+    .replace(/[١۱]/g, '1')
+    .replace(/[٢۲]/g, '2')
+    .replace(/[٣۳]/g, '3')
+    .replace(/[٤۴]/g, '4')
+    .replace(/[٥۵]/g, '5')
+    .replace(/[٦۶]/g, '6')
+    .replace(/[٧۷]/g, '7')
+    .replace(/[٨۸]/g, '8')
+    .replace(/[٩۹]/g, '9')
+    .replace(/\s+/g, '')
+    .trim();
+}
+
 export class UserRepository {
   static getByPhone(phone: string): User | null {
+    const clean = normalizePhone(phone);
     return db.getFirstSync(
-      'SELECT * FROM users WHERE phone = ? AND deleted_at IS NULL',
-      [phone]
+      'SELECT * FROM users WHERE (phone = ? OR phone = ?) AND deleted_at IS NULL',
+      [clean, phone.trim()]
     ) as User | null;
   }
 
@@ -51,7 +69,7 @@ export class UserRepository {
     phone: string;
     password_plaintext: string;
   }): Promise<User> {
-    const cleanPhone = user.phone.trim();
+    const cleanPhone = normalizePhone(user.phone);
     // منع التكرار محلياً
     if (this.getByPhone(cleanPhone)) {
       throw new Error('رقم الهاتف مستخدم مسبقاً');
@@ -171,38 +189,42 @@ export class UserRepository {
     phone: string,
     password_plaintext: string
   ): Promise<User | null> {
-    const cleanPhone = phone.trim();
+    const cleanPhone = normalizePhone(phone);
     const hash = await this.hashPassword(password_plaintext);
     const localUser = this.getByPhone(cleanPhone);
 
-    // الحالة 1: الحساب موجود في قاعدة البيانات المحلية وكلمة المرور صحيحة محلياً
-    if (localUser && localUser.password_hash === hash) {
-      try {
-        const fakeEmail = `${cleanPhone.replace(/\D/g, '')}@rafidain.local`;
-        const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
-          email: fakeEmail,
-          password: password_plaintext,
-        });
+    // 1. التحقق محلياً من SQLite
+    if (localUser) {
+      if (localUser.password_hash === hash) {
+        // كلمة المرور صحيحة محلياً
+        try {
+          const fakeEmail = `${cleanPhone.replace(/\D/g, '')}@rafidain.local`;
+          const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+            email: fakeEmail,
+            password: password_plaintext,
+          });
 
-        if (!authError && authData.user) {
-          console.log('[UserRepository] Cloud session established for local user ✓');
-          useAppStore.getState().setCloudMode(true);
-          // سحب تحديثات البيانات من السحابة في الخلفية
-          syncFromCloud(localUser.id).catch((err) =>
-            console.warn('[UserRepository] Cloud sync background error:', err)
-          );
-          checkLiveSubscription(localUser.id).catch((err) =>
-            console.warn('[UserRepository] Subscription check background error:', err)
-          );
+          if (!authError && authData.user) {
+            console.log('[UserRepository] Cloud session established for local user ✓');
+            useAppStore.getState().setCloudMode(true);
+            syncFromCloud(localUser.id).catch((err) =>
+              console.warn('[UserRepository] Cloud sync background error:', err)
+            );
+            checkLiveSubscription(localUser.id).catch((err) =>
+              console.warn('[UserRepository] Subscription check background error:', err)
+            );
+          }
+        } catch (cloudErr: any) {
+          console.warn('[UserRepository] Offline mode login:', cloudErr?.message ?? cloudErr);
         }
-      } catch (cloudErr: any) {
-        console.warn('[UserRepository] Offline mode login:', cloudErr?.message ?? cloudErr);
-      }
 
-      return localUser;
+        return localUser;
+      } else {
+        console.warn('[UserRepository] Local password mismatch for user:', localUser.phone);
+      }
     }
 
-    // الحالة 2: الحساب غير موجود محلياً (مثلاً جهاز جديد) أو تم تغيير كلمة المرور عبر السحابة
+    // 2. المحاولة عبر Supabase Auth
     try {
       const fakeEmail = `${cleanPhone.replace(/\D/g, '')}@rafidain.local`;
       const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
@@ -210,82 +232,140 @@ export class UserRepository {
         password: password_plaintext,
       });
 
-      if (authError || !authData.user) {
-        console.warn('[UserRepository] Cloud authentication failed:', authError?.message);
-        return null;
-      }
+      if (!authError && authData.user) {
+        const authUserId = authData.user.id;
+        console.log('[UserRepository] Supabase Auth successful for ID:', authUserId);
 
-      const authUserId = authData.user.id;
-      console.log('[UserRepository] Cloud auth successful for ID:', authUserId);
-
-      // جلب صف المستخدم من جدول users في السحابة
-      let { data: cloudUser } = await supabase
-        .from('users')
-        .select('*')
-        .eq('id', authUserId)
-        .maybeSingle();
-
-      if (!cloudUser) {
-        const { data: cloudUserByPhone } = await supabase
+        let { data: cloudUser } = await supabase
           .from('users')
           .select('*')
-          .eq('phone', cleanPhone)
+          .eq('id', authUserId)
           .maybeSingle();
-        cloudUser = cloudUserByPhone;
+
+        if (!cloudUser) {
+          const { data: cloudUserByPhone } = await supabase
+            .from('users')
+            .select('*')
+            .eq('phone', cleanPhone)
+            .maybeSingle();
+          cloudUser = cloudUserByPhone;
+        }
+
+        const now = new Date().toISOString();
+        const userToSave: User = {
+          id: authUserId,
+          name: cloudUser?.name || (authData.user.user_metadata?.name as string) || 'تاجر',
+          phone: cloudUser?.phone || cleanPhone,
+          password_hash: cloudUser?.password_hash || hash,
+          role: cloudUser?.role || 'owner',
+          status: cloudUser?.status || 'active',
+          created_at: cloudUser?.created_at || now,
+          updated_at: cloudUser?.updated_at || now,
+          deleted_at: cloudUser?.deleted_at || null,
+          version: cloudUser?.version || 1,
+        };
+
+        db.runSync(
+          `INSERT OR REPLACE INTO users 
+             (id, name, phone, password_hash, role, status, created_at, updated_at, deleted_at, version)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            userToSave.id,
+            userToSave.name,
+            userToSave.phone,
+            userToSave.password_hash,
+            userToSave.role,
+            userToSave.status,
+            userToSave.created_at,
+            userToSave.updated_at,
+            userToSave.deleted_at,
+            userToSave.version,
+          ]
+        );
+
+        useAppStore.getState().setCloudMode(true);
+        try {
+          await syncFromCloud(userToSave.id);
+          await checkLiveSubscription(userToSave.id);
+        } catch (syncErr) {
+          console.warn('[UserRepository] Sync error after auth:', syncErr);
+        }
+
+        return userToSave;
       }
-
-      const now = new Date().toISOString();
-      const userToSave: User = {
-        id: authUserId,
-        name: cloudUser?.name || (authData.user.user_metadata?.name as string) || 'تاجر',
-        phone: cloudUser?.phone || cleanPhone,
-        password_hash: cloudUser?.password_hash || hash,
-        role: cloudUser?.role || 'owner',
-        status: cloudUser?.status || 'active',
-        created_at: cloudUser?.created_at || now,
-        updated_at: cloudUser?.updated_at || now,
-        deleted_at: cloudUser?.deleted_at || null,
-        version: cloudUser?.version || 1,
-      };
-
-      // حفظ الحساب في SQLite المحلي للجهاز الجديد
-      db.runSync(
-        `INSERT OR REPLACE INTO users 
-           (id, name, phone, password_hash, role, status, created_at, updated_at, deleted_at, version)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          userToSave.id,
-          userToSave.name,
-          userToSave.phone,
-          userToSave.password_hash,
-          userToSave.role,
-          userToSave.status,
-          userToSave.created_at,
-          userToSave.updated_at,
-          userToSave.deleted_at,
-          userToSave.version,
-        ]
-      );
-
-      console.log('[UserRepository] User stored in local SQLite from cloud ✓', userToSave.id);
-
-      // تفعيل النمط السحابي
-      useAppStore.getState().setCloudMode(true);
-
-      // جلب كافة بيانات التاجر من السحابة إلى قاعدة البيانات المحلية (العملاء، الديون، المدفوعات...)
-      try {
-        await syncFromCloud(userToSave.id);
-        await checkLiveSubscription(userToSave.id);
-        console.log('[UserRepository] Full cloud dataset synced to local device ✓');
-      } catch (syncErr) {
-        console.warn('[UserRepository] Sync after cloud login encountered issue:', syncErr);
-      }
-
-      return userToSave;
-    } catch (err: any) {
-      console.warn('[UserRepository] Cloud login exception:', err?.message ?? err);
-      return null;
+    } catch (authErr: any) {
+      console.warn('[UserRepository] Supabase Auth exception:', authErr?.message ?? authErr);
     }
+
+    // 3. الخطوة الاحتياطية: الاستعلام المباشر من جدول users بالسحابة (في حال كان هناك تعثر في Supabase Auth)
+    try {
+      const { data: cloudUser, error: queryError } = await supabase
+        .from('users')
+        .select('*')
+        .eq('phone', cleanPhone)
+        .maybeSingle();
+
+      if (cloudUser && !queryError) {
+        if (cloudUser.password_hash === hash) {
+          console.log('[UserRepository] Direct DB password match for user:', cloudUser.id);
+          const userToSave: User = {
+            id: cloudUser.id,
+            name: cloudUser.name || 'تاجر',
+            phone: cloudUser.phone || cleanPhone,
+            password_hash: cloudUser.password_hash,
+            role: cloudUser.role || 'owner',
+            status: cloudUser.status || 'active',
+            created_at: cloudUser.created_at || new Date().toISOString(),
+            updated_at: cloudUser.updated_at || new Date().toISOString(),
+            deleted_at: cloudUser.deleted_at || null,
+            version: cloudUser.version || 1,
+          };
+
+          db.runSync(
+            `INSERT OR REPLACE INTO users 
+               (id, name, phone, password_hash, role, status, created_at, updated_at, deleted_at, version)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [
+              userToSave.id,
+              userToSave.name,
+              userToSave.phone,
+              userToSave.password_hash,
+              userToSave.role,
+              userToSave.status,
+              userToSave.created_at,
+              userToSave.updated_at,
+              userToSave.deleted_at,
+              userToSave.version,
+            ]
+          );
+
+          useAppStore.getState().setCloudMode(true);
+          try {
+            await syncFromCloud(userToSave.id);
+            await checkLiveSubscription(userToSave.id);
+          } catch (syncErr) {
+            console.warn('[UserRepository] Sync error after direct DB match:', syncErr);
+          }
+
+          return userToSave;
+        } else {
+          console.warn('[UserRepository] Direct DB password mismatch');
+          throw new Error('كلمة المرور غير صحيحة');
+        }
+      }
+    } catch (dbErr: any) {
+      if (dbErr.message === 'كلمة المرور غير صحيحة') {
+        throw dbErr;
+      }
+      console.warn('[UserRepository] Direct DB query error:', dbErr?.message ?? dbErr);
+    }
+
+    if (localUser) {
+      throw new Error('كلمة المرور غير صحيحة');
+    }
+
+    throw new Error('رقم الهاتف غير مسجل في النظام');
   }
 }
+
 
