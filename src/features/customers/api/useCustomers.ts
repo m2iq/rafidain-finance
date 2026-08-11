@@ -1,13 +1,17 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { CustomerRepository, Customer } from '../../../core/database/repositories/CustomerRepository';
+import { useAppStore } from '../../../core/store/appStore';
 
 export function useCustomers() {
+  const user = useAppStore((s) => s.user);
+
   return useQuery({
-    queryKey: ['customers'],
+    queryKey: ['customers', user?.id],
     queryFn: async () => {
-      const customers = CustomerRepository.getAll();
-      return customers;
+      if (!user?.id) return [];
+      return CustomerRepository.getAll(user.id);
     },
+    enabled: !!user?.id,
   });
 }
 

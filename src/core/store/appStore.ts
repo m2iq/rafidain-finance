@@ -15,6 +15,7 @@ interface AppState {
   user: AppUser | null;
   _hasHydrated: boolean;
   hasActiveSubscription: boolean;
+  isDatabaseReady: boolean;
   // Auth
   setUser: (user: AppUser | null) => void;
   clearUser: () => void;
@@ -28,6 +29,8 @@ interface AppState {
   setSubscription: (isActive: boolean) => void;
   // Hydration
   setHasHydrated: (val: boolean) => void;
+  // Database
+  setDatabaseReady: (val: boolean) => void;
 }
 
 export const useAppStore = create<AppState>()(
@@ -38,6 +41,7 @@ export const useAppStore = create<AppState>()(
       user: null,
       _hasHydrated: false,
       hasActiveSubscription: false,
+      isDatabaseReady: false,
       setUser: (user) => set({ user }),
       clearUser: () => set({ user: null }),
       toggleDarkMode: () => set((state) => ({ isDarkMode: !state.isDarkMode })),
@@ -46,6 +50,7 @@ export const useAppStore = create<AppState>()(
       setCloudMode: (isCloudMode) => set({ isCloudMode }),
       setSubscription: (hasActiveSubscription) => set({ hasActiveSubscription }),
       setHasHydrated: (val) => set({ _hasHydrated: val }),
+      setDatabaseReady: (val) => set({ isDatabaseReady: val }),
     }),
     {
       name: 'app-storage',
@@ -58,9 +63,11 @@ export const useAppStore = create<AppState>()(
         hasActiveSubscription: state.hasActiveSubscription,
       }),
       onRehydrateStorage: () => (state) => {
+        console.log('[STORE] Zustand hydration finished, state exists:', !!state);
         // يُستدعى عند اكتمال استعادة البيانات من التخزين
         if (state) {
           state.setHasHydrated(true);
+          console.log('[STORE] Hydrated user:', state.user?.name);
         }
       },
     }

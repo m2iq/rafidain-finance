@@ -1,13 +1,13 @@
-import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, TouchableOpacity, Alert } from 'react-native';
-import { Text, useTheme, Surface } from 'react-native-paper';
 import { useRouter } from 'expo-router';
-import { CheckCircle2, Cloud, Server, Sparkles, ShieldCheck, Check } from 'lucide-react-native';
-import AppScreen from '../../shared/components/AppScreen';
-import AppButton from '../../shared/components/AppButton';
+import { Check, CheckCircle, Cloud, Server, ShieldCheck, Sparkles } from 'lucide-react-native';
+import { useEffect, useState } from 'react';
+import { Alert, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { Surface, Text, useTheme } from 'react-native-paper';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAppStore } from '../../core/store/appStore';
 import { supabase } from '../../core/supabase/supabaseClient';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import AppButton from '../../shared/components/AppButton';
+import AppScreen from '../../shared/components/AppScreen';
 import ar from '../../shared/i18n/ar';
 import { formatCurrency } from '../../shared/utils/currency';
 
@@ -16,9 +16,15 @@ export default function SubscriptionScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { isCloudMode, hasActiveSubscription, setCloudMode, setSubscription, user } = useAppStore();
-  
+
   const [billingCycle, setBillingCycle] = useState<'monthly' | 'quarterly'>('quarterly');
   const [loading, setLoading] = useState(false);
+
+  const [subDetails, setSubDetails] = useState<{
+    endDate: string | null;
+    planTier: string;
+    remainingDays: number;
+  } | null>(null);
 
   useEffect(() => {
     if (user?.id) {
@@ -32,11 +38,34 @@ export default function SubscriptionScreen() {
         .from('subscriptions')
         .select('*')
         .eq('store_id', userId)
-        .single();
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
 
-      if (data && data.status === 'active') {
-        setSubscription(true);
-        setCloudMode(true);
+      if (data && data.status === 'active' && data.plan_tier !== 'free') {
+        // التحقق من تاريخ الانتهاء
+        const isExpired = data.end_date && new Date(data.end_date) < new Date();
+        if (isExpired) {
+          // الاشتراك منتهي — أوقف المزامنة تلقائياً
+          setSubscription(false);
+          setCloudMode(false);
+          setSubDetails(null);
+        } else {
+          setSubscription(true);
+          const days = data.end_date
+            ? Math.max(0, Math.ceil((new Date(data.end_date).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)))
+            : 0;
+          setSubDetails({
+            endDate: data.end_date,
+            planTier: data.plan_tier,
+            remainingDays: days,
+          });
+        }
+      } else {
+        // لا يوجد اشتراك نشط — أوقف المزامنة
+        setSubscription(false);
+        setCloudMode(false);
+        setSubDetails(null);
       }
     } catch (err) {
       console.log('Subscription check note:', err);
@@ -89,7 +118,7 @@ export default function SubscriptionScreen() {
   return (
     <AppScreen title={ar.subscription.title} scroll>
       <View style={[styles.container, { paddingBottom: 100 + insets.bottom }]}>
-        
+
         {/* Subtitle / Intro */}
         <Text variant="bodyMedium" style={[styles.subtitle, { color: theme.colors.outline }]}>
           انقل أعمالك للمستوى التالي مع المزامنة السحابية الفورية والنسخ الاحتياطي التلقائي.
@@ -218,11 +247,25 @@ export default function SubscriptionScreen() {
               style={styles.proSubscribeBtn}
             />
           ) : (
-            <View style={styles.currentPlanFooter}>
-              <ShieldCheck size={18} color="#16A34A" />
-              <Text variant="labelLarge" style={{ color: '#16A34A', fontFamily: 'Cairo_700Bold' }}>
-                اشتراكك فعال ويعمل بكفاءة عالية
-              </Text>
+            <View style={[styles.currentPlanFooter, { alignItems: 'flex-start' }]}>
+              <ShieldCheck size={20} color="#16A34A" style={{ marginTop: 2 }} />
+              <View style={{ flex: 1, marginLeft: 8 }}>
+                <Text variant="labelLarge" style={{ color: '#16A34A', fontFamily: 'Cairo_700Bold' }}>
+                  اشتراكك فعال ({subDetails?.remainingDays ?? 0} يوم متبقي)
+                </Text>
+                {!!subDetails?.endDate && (
+                  <Text variant="bodySmall" style={{ color: theme.colors.outline, fontFamily: 'Cairo_400Regular', marginTop: 2 }}>
+                    تاريخ الانتهاء: {(() => {
+                      try {
+                        const dateObj = new Date(subDetails.endDate);
+                        return isNaN(dateObj.getTime()) ? 'غير محدد' : dateObj.toISOString().split('T')[0];
+                      } catch {
+                        return 'غير محدد';
+                      }
+                    })()}
+                  </Text>
+                )}
+              </View>
             </View>
           )}
         </Surface>
@@ -290,7 +333,7 @@ function ProFeature({ text }: { text: string }) {
   return (
     <View style={styles.featureItem}>
       <View style={[styles.checkDot, { backgroundColor: theme.dark ? '#064E3B' : '#DCFCE7' }]}>
-        <CheckCircle2 size={16} color="#16A34A" />
+        <CheckCircle size={16} color="#16A34A" />
       </View>
       <Text variant="bodyMedium" style={[styles.featureText, { color: theme.colors.onSurface }]}>
         {text}
@@ -304,7 +347,7 @@ function FreeFeature({ text, active }: { text: string; active: boolean }) {
   return (
     <View style={styles.featureItem}>
       <View style={[styles.checkDot, { backgroundColor: active ? (theme.dark ? '#064E3B' : '#DCFCE7') : (theme.dark ? '#311F1F' : '#FEE2E2') }]}>
-        <CheckCircle2 size={16} color={active ? "#16A34A" : "#EF4444"} />
+        <CheckCircle size={16} color={active ? "#16A34A" : "#EF4444"} />
       </View>
       <Text
         variant="bodyMedium"

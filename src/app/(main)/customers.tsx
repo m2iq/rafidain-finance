@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
-import { View, StyleSheet, TouchableOpacity, RefreshControl, StatusBar, Modal, KeyboardAvoidingView, Platform, ScrollView, Linking } from 'react-native';
+import { View, StyleSheet, TouchableOpacity, RefreshControl, StatusBar, Modal, KeyboardAvoidingView, Platform, ScrollView, Linking, FlatList } from 'react-native';
 import { Text, useTheme, FAB, Avatar, Surface, Chip, Divider, ProgressBar } from 'react-native-paper';
-import { FlashList } from '@shopify/flash-list';
 import { Search, Plus, Phone, MapPin, X, UserCheck, PhoneCall, MessageCircle, FileText, Calendar, DollarSign, Clock, CheckCircle } from 'lucide-react-native';
 import Animated from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -296,7 +295,7 @@ export default function CustomersScreen() {
         </View>
       </View>
 
-      <FlashList
+      <FlatList
         data={filtered}
         renderItem={({ item }) => (
           <CustomerCard
@@ -306,7 +305,6 @@ export default function CustomersScreen() {
             onCall={handleCallCustomer}
           />
         )}
-        estimatedItemSize={80}
         keyExtractor={(item) => item.id}
         contentContainerStyle={[
           styles.listContent,

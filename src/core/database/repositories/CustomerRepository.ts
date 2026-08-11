@@ -16,8 +16,12 @@ export interface Customer {
 }
 
 export class CustomerRepository {
-  static getAll(): Customer[] {
-    return db.getAllSync('SELECT * FROM customers WHERE deleted_at IS NULL ORDER BY created_at DESC') as Customer[];
+  static getAll(storeId?: string): Customer[] {
+    if (!storeId) return [];
+    return db.getAllSync(
+      'SELECT * FROM customers WHERE store_id = ? AND deleted_at IS NULL ORDER BY created_at DESC',
+      [storeId]
+    ) as Customer[];
   }
 
   static getById(id: string): Customer | null {
