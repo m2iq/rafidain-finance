@@ -1,14 +1,19 @@
 import { useRouter } from 'expo-router';
-import { Bell, ChevronLeft, CreditCard, Globe, HelpCircle, Lock, LogOut, Moon, Shield, User } from 'lucide-react-native';
+import { Bell, ChevronLeft, CreditCard, Globe, HelpCircle, Lock, LogOut, Moon, Shield, User, X } from 'lucide-react-native';
 import React from 'react';
-import { Alert, ScrollView, StatusBar, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { Alert, KeyboardAvoidingView, Modal, Platform, ScrollView, StatusBar, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { Avatar, Divider, Switch, Text, useTheme } from 'react-native-paper';
-import Animated from 'react-native-reanimated';
+import Animated, { FadeIn } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useMutation } from '@tanstack/react-query';
 import { useAppStore } from '../../core/store/appStore';
 import { checkLiveSubscription, runSyncWithProgress, SyncProgress } from '../../core/supabase/syncService';
+import { UserRepository } from '../../core/database/repositories/UserRepository';
 import SyncProgressModal from '../../shared/components/SyncProgressModal';
+import AppInput from '../../shared/components/AppInput';
+import AppButton from '../../shared/components/AppButton';
 import ar from '../../shared/i18n/ar';
+import { NotificationService } from '../../core/notifications/notificationService';
 
 function SettingRow({
   title, description, Icon, iconBg, iconColor, right, onPress, danger,
@@ -85,10 +90,50 @@ export default function SettingsScreen() {
   const isDarkMode = useAppStore((s) => s.isDarkMode);
   const toggleDark = useAppStore((s) => s.toggleDarkMode);
   const hasActiveSubscription = useAppStore((s) => s.hasActiveSubscription);
-  const [notif, setNotif] = React.useState(true);
+  const setUser = useAppStore((s) => s.setUser);
+  const notif = useAppStore((s) => s.notificationsEnabled);
+  const setNotif = useAppStore((s) => s.setNotificationsEnabled);
+
+  const handleToggleNotifications = async (val: boolean) => {
+    setNotif(val);
+    if (user?.id) {
+      if (val) {
+        await NotificationService.init(user.id);
+      } else {
+        await NotificationService.removePushTokenFromCloud(user.id);
+      }
+    }
+  };
 
   const [syncModalVisible, setSyncModalVisible] = React.useState(false);
   const [syncProgress, setSyncProgress] = React.useState<SyncProgress | null>(null);
+
+  const [editProfileVisible, setEditProfileVisible] = React.useState(false);
+  const [editName, setEditName] = React.useState(user?.name || '');
+  const [editPhone, setEditPhone] = React.useState(user?.phone || '');
+  const [editError, setEditError] = React.useState('');
+
+  const updateProfileMutation = useMutation({
+    mutationFn: async () => {
+      if (!user?.id) throw new Error('يرجى تسجيل الدخول أولاً');
+      await UserRepository.updateProfile(user.id, { name: editName, phone: editPhone });
+    },
+    onSuccess: () => {
+      if (user) setUser({ ...user, name: editName.trim(), phone: editPhone.trim() });
+      setEditProfileVisible(false);
+      setEditError('');
+    },
+    onError: (err: any) => {
+      setEditError(err.message || 'فشل تحديث البيانات');
+    },
+  });
+
+  const openEditProfile = () => {
+    setEditName(user?.name || '');
+    setEditPhone(user?.phone || '');
+    setEditError('');
+    setEditProfileVisible(true);
+  };
 
   React.useEffect(() => {
     if (user?.id) {
@@ -162,7 +207,10 @@ export default function SettingsScreen() {
               </Text>
             </View>
           </View>
-          <TouchableOpacity style={[styles.editBtn, { borderColor: theme.colors.outlineVariant }]}>
+          <TouchableOpacity
+            style={[styles.editBtn, { borderColor: theme.colors.outlineVariant }]}
+            onPress={openEditProfile}
+          >
             <User size={18} color={theme.colors.primary} />
           </TouchableOpacity>
         </View>
@@ -193,7 +241,7 @@ export default function SettingsScreen() {
             Icon={Bell}
             iconBg={theme.colors.tertiaryContainer}
             iconColor={theme.colors.tertiary}
-            right={<Switch value={notif} onValueChange={setNotif} color={theme.colors.primary} />}
+            right={<Switch value={notif} onValueChange={handleToggleNotifications} color={theme.colors.primary} />}
           />
           <Divider style={{ backgroundColor: theme.colors.outlineVariant }} />
           <TouchableOpacity
@@ -277,7 +325,7 @@ export default function SettingsScreen() {
           <SettingRow
             title={ar.settings.changePassword}
             Icon={Shield}
-            onPress={() => { }}
+            onPress={() => router.push('/(main)/change-password')}
           />
           <Divider style={{ backgroundColor: theme.colors.outlineVariant }} />
           <SettingRow
@@ -285,7 +333,7 @@ export default function SettingsScreen() {
             Icon={HelpCircle}
             iconBg={theme.colors.tertiaryContainer}
             iconColor={theme.colors.tertiary}
-            onPress={() => { }}
+            onPress={() => router.push('/(main)/help-center')}
           />
         </Section>
       </Animated.View>
@@ -315,6 +363,55 @@ export default function SettingsScreen() {
         progress={syncProgress}
         onClose={() => setSyncModalVisible(false)}
       />
+
+      <Modal
+        visible={editProfileVisible}
+        animationType="fade"
+        transparent
+        onRequestClose={() => setEditProfileVisible(false)}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={styles.editModalOverlay}
+        >
+          <View style={[styles.editModalCard, { backgroundColor: theme.colors.surface }]}>
+            <View style={styles.editModalHeader}>
+              <Text variant="titleMedium" style={{ color: theme.colors.onSurface, fontFamily: 'Cairo_700Bold' }}>
+                تعديل البيانات الشخصية
+              </Text>
+              <TouchableOpacity onPress={() => setEditProfileVisible(false)} style={{ padding: 6 }}>
+                <X size={20} color={theme.colors.outline} />
+              </TouchableOpacity>
+            </View>
+
+            {editError ? (
+              <View style={[styles.editErrorBox, { backgroundColor: theme.colors.errorContainer }]}>
+                <Text style={{ color: theme.colors.onErrorContainer, fontFamily: 'Cairo_600SemiBold', fontSize: 13 }}>
+                  {editError}
+                </Text>
+              </View>
+            ) : null}
+
+            <AppInput label="الاسم الكامل" icon="user" value={editName} onChangeText={setEditName} />
+            <View style={{ height: 12 }} />
+            <AppInput
+              label="رقم الهاتف"
+              icon="phone"
+              value={editPhone}
+              onChangeText={setEditPhone}
+              keyboardType="phone-pad"
+            />
+
+            <View style={{ height: 20 }} />
+            <AppButton
+              label="حفظ التعديلات"
+              onPress={() => updateProfileMutation.mutate()}
+              loading={updateProfileMutation.isPending}
+              disabled={updateProfileMutation.isPending}
+            />
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </ScrollView>
   );
 }
@@ -340,5 +437,28 @@ const styles = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', gap: 4,
     paddingHorizontal: 10, paddingVertical: 5,
     borderRadius: 10, borderWidth: 1,
+  },
+  editModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  editModalCard: {
+    width: '100%',
+    borderRadius: 24,
+    padding: 20,
+  },
+  editModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 16,
+  },
+  editErrorBox: {
+    padding: 12,
+    borderRadius: 12,
+    marginBottom: 14,
   },
 });

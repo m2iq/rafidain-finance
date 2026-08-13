@@ -2,145 +2,212 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
+import { useAuth } from '@/components/providers/AuthProvider';
 import Link from 'next/link';
 import {
-  Users, CreditCard, Ticket, Activity, AlertTriangle,
-  UserCheck, UserX, Clock, ArrowUpRight, TrendingUp,
-  TrendingDown, Minus, ShieldCheck,
+  Users,
+  CreditCard,
+  Ticket,
+  Activity,
+  AlertTriangle,
+  UserCheck,
+  UserX,
+  Clock,
+  ArrowUpRight,
+  ShieldCheck,
+  TrendingUp,
 } from 'lucide-react';
 import {
-  ResponsiveContainer, AreaChart, Area, XAxis, YAxis,
-  Tooltip, CartesianGrid, BarChart, Bar,
+  ResponsiveContainer,
+  AreaChart,
+  Area,
+  XAxis,
+  YAxis,
+  Tooltip,
+  CartesianGrid,
 } from 'recharts';
+import { StatCard } from '@/components/ui/stat-card';
 
-// ─── Safe fetch helper ────────────────────────────────────────────
+// ─── Helpers ─────────────────────────────────────────────────────
 const safeQ = async (promise: any) => {
   try {
     const res = await promise;
-    return res.error ? { count: 0, data: [] } : res;
+    return res.error
+      ? { count: 0, data: [], failed: true }
+      : { ...res, failed: false };
   } catch {
-    return { count: 0, data: [] };
+    return { count: 0, data: [], failed: true };
   }
 };
 
-// ─── KPI Card ────────────────────────────────────────────────────
-function KPICard({
-  title, value, sub, icon: Icon, color, trend,
-}: {
-  title: string;
-  value: string | number;
-  sub?: string;
-  icon: React.ElementType;
-  color: 'indigo' | 'emerald' | 'amber' | 'rose' | 'violet';
-  trend?: 'up' | 'down' | 'neutral';
-}) {
-  const colors = {
-    indigo: {
-      icon: 'bg-indigo-500/15 text-indigo-500 dark:text-indigo-400',
-      value: 'text-foreground',
-      border: 'border-indigo-500/15',
-    },
-    emerald: {
-      icon: 'bg-emerald-500/15 text-emerald-500 dark:text-emerald-400',
-      value: 'text-foreground',
-      border: 'border-emerald-500/15',
-    },
-    amber: {
-      icon: 'bg-amber-500/15 text-amber-500 dark:text-amber-400',
-      value: 'text-amber-600 dark:text-amber-400',
-      border: 'border-amber-500/15',
-    },
-    rose: {
-      icon: 'bg-rose-500/15 text-rose-500 dark:text-rose-400',
-      value: 'text-rose-600 dark:text-rose-400',
-      border: 'border-rose-500/15',
-    },
-    violet: {
-      icon: 'bg-violet-500/15 text-violet-500 dark:text-violet-400',
-      value: 'text-foreground',
-      border: 'border-violet-500/15',
-    },
-  };
-  const c = colors[color];
-  const TrendIcon = trend === 'up' ? TrendingUp : trend === 'down' ? TrendingDown : Minus;
-  const trendColor = trend === 'up' ? 'text-emerald-500' : trend === 'down' ? 'text-rose-500' : 'text-muted-foreground';
-
+function PageSkeleton() {
+  const Card = ({ h, cls = '' }: { h: string; cls?: string }) => (
+    <div className={`rounded-2xl bg-muted/50 animate-pulse ${h} ${cls}`} />
+  );
   return (
-    <div className={`rounded-2xl bg-card border ${c.border} p-5 hover:shadow-lg transition-all duration-200 group`}>
-      <div className="flex items-start justify-between mb-4">
-        <div className={`w-10 h-10 rounded-xl ${c.icon} flex items-center justify-center`}>
-          <Icon size={20} />
-        </div>
-        {trend && (
-          <TrendIcon size={14} className={`${trendColor} opacity-70`} />
-        )}
+    <div className="space-y-6">
+      <Card h="h-20" cls="max-w-sm" />
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        {Array.from({ length: 8 }).map((_, i) => (
+          <Card key={i} h="h-[108px]" />
+        ))}
       </div>
-      <p className="text-xs font-medium text-muted-foreground mb-1">{title}</p>
-      <p className={`text-2xl font-extrabold ${c.value} tabular-nums`}>{value}</p>
-      {sub && <p className="text-xs text-muted-foreground mt-1.5">{sub}</p>}
+      <div className="grid gap-5 lg:grid-cols-7">
+        <Card h="h-[300px]" cls="lg:col-span-4" />
+        <Card h="h-[300px]" cls="lg:col-span-3" />
+      </div>
     </div>
   );
 }
 
-// ─── Skeleton ────────────────────────────────────────────────────
-function Skeleton({ className }: { className?: string }) {
-  return <div className={`animate-pulse bg-muted rounded-xl ${className}`} />;
-}
-
-// ─── Custom Tooltip ──────────────────────────────────────────────
 function CustomTooltip({ active, payload, label }: any) {
   if (!active || !payload?.length) return null;
   return (
-    <div className="rounded-xl border border-border bg-card/95 backdrop-blur shadow-xl p-3 text-sm">
-      <p className="font-semibold mb-2 text-foreground">{label}</p>
+    <div className="rounded-xl border border-border bg-card/95 backdrop-blur shadow-xl p-3 text-sm min-w-[140px]">
+      <p className="font-semibold mb-2 text-foreground text-xs">{label}</p>
       {payload.map((p: any) => (
-        <div key={p.name} className="flex items-center gap-2">
-          <span className="w-2 h-2 rounded-full" style={{ background: p.fill || p.stroke }} />
-          <span className="text-muted-foreground">{p.name}:</span>
-          <span className="font-bold text-foreground">{p.value}</span>
+        <div key={p.name} className="flex items-center justify-between gap-3">
+          <span className="flex items-center gap-1.5 text-muted-foreground text-[11px]">
+            <span
+              className="w-2 h-2 rounded-full"
+              style={{ background: p.stroke }}
+            />
+            {p.name}
+          </span>
+          <span className="font-bold text-foreground text-[13px]">
+            {p.value}
+          </span>
         </div>
       ))}
     </div>
   );
 }
 
-// ─── Main Page ───────────────────────────────────────────────────
+// ─── Page ─────────────────────────────────────────────────────────
 export default function DashboardPage() {
+  const { adminProfile } = useAuth();
+
   const { data: stats, isLoading } = useQuery({
     queryKey: ['adminDashboardStats'],
+    staleTime: 60_000,
     queryFn: async () => {
       const now = new Date();
-      const in7 = new Date(); in7.setDate(now.getDate() + 7);
-      const in30 = new Date(); in30.setDate(now.getDate() + 30);
+      const in7 = new Date(now);
+      in7.setDate(now.getDate() + 7);
+      const in30 = new Date(now);
+      in30.setDate(now.getDate() + 30);
+
+      const monthStarts = Array.from({ length: 6 }).map((_, i) => {
+        return new Date(now.getFullYear(), now.getMonth() - (5 - i), 1);
+      });
+      const windowStart = monthStarts[0];
 
       const [
-        totalUsersRes, activeUsersRes, suspendedUsersRes,
-        activeSubsRes, expiredSubsRes,
-        expiring7Res, expiring30Res,
-        vouchersRes, recentUsersRes,
+        totalUsersRes,
+        activeUsersRes,
+        suspendedUsersRes,
+        activeSubsRes,
+        expiredSubsRes,
+        expiring7Res,
+        expiring30Res,
+        vouchersRes,
+        recentUsersRes,
+        usersGrowthRes,
+        subsGrowthRes,
       ] = await Promise.all([
         safeQ(supabase.from('users').select('*', { count: 'exact', head: true })),
-        safeQ(supabase.from('users').select('*', { count: 'exact', head: true }).eq('status', 'active')),
-        safeQ(supabase.from('users').select('*', { count: 'exact', head: true }).eq('status', 'inactive')),
-        safeQ(supabase.from('subscriptions').select('*', { count: 'exact', head: true }).eq('status', 'active')),
-        safeQ(supabase.from('subscriptions').select('*', { count: 'exact', head: true }).eq('status', 'expired')),
-        safeQ(supabase.from('subscriptions').select('*', { count: 'exact', head: true }).eq('status', 'active').lte('end_date', in7.toISOString()).gte('end_date', now.toISOString())),
-        safeQ(supabase.from('subscriptions').select('*', { count: 'exact', head: true }).eq('status', 'active').lte('end_date', in30.toISOString()).gte('end_date', now.toISOString())),
+        safeQ(
+          supabase
+            .from('users')
+            .select('*', { count: 'exact', head: true })
+            .eq('status', 'active'),
+        ),
+        safeQ(
+          supabase
+            .from('users')
+            .select('*', { count: 'exact', head: true })
+            .eq('status', 'inactive'),
+        ),
+        safeQ(
+          supabase
+            .from('subscriptions')
+            .select('*', { count: 'exact', head: true })
+            .eq('status', 'active'),
+        ),
+        safeQ(
+          supabase
+            .from('subscriptions')
+            .select('*', { count: 'exact', head: true })
+            .eq('status', 'expired'),
+        ),
+        safeQ(
+          supabase
+            .from('subscriptions')
+            .select('*', { count: 'exact', head: true })
+            .eq('status', 'active')
+            .lte('end_date', in7.toISOString())
+            .gte('end_date', now.toISOString()),
+        ),
+        safeQ(
+          supabase
+            .from('subscriptions')
+            .select('*', { count: 'exact', head: true })
+            .eq('status', 'active')
+            .lte('end_date', in30.toISOString())
+            .gte('end_date', now.toISOString()),
+        ),
         safeQ(supabase.from('voucher_codes').select('id, current_usages, max_usages')),
-        safeQ(supabase.from('users').select('id, name, phone, created_at, status').order('created_at', { ascending: false }).limit(8)),
+        safeQ(
+          supabase
+            .from('users')
+            .select('id, name, phone, created_at, status')
+            .order('created_at', { ascending: false })
+            .limit(8),
+        ),
+        safeQ(
+          supabase
+            .from('users')
+            .select('created_at')
+            .gte('created_at', windowStart.toISOString()),
+        ),
+        safeQ(
+          supabase
+            .from('subscriptions')
+            .select('created_at')
+            .gte('created_at', windowStart.toISOString()),
+        ),
       ]);
 
       const totalVouchers = vouchersRes.data?.length ?? 0;
-      const totalVoucherUsages = vouchersRes.data?.reduce((a: number, v: any) => a + (v.current_usages || 0), 0) ?? 0;
+      const totalVoucherUsages =
+        vouchersRes.data?.reduce(
+          (a: number, v: any) => a + (v.current_usages || 0),
+          0,
+        ) ?? 0;
 
-      const chartData = [
-        { month: 'يناير', مستخدمين: 8, اشتراكات: 2 },
-        { month: 'فبراير', مستخدمين: 20, اشتراكات: 6 },
-        { month: 'مارس', مستخدمين: 38, اشتراكات: 15 },
-        { month: 'أبريل', مستخدمين: 62, اشتراكات: 28 },
-        { month: 'مايو', مستخدمين: 95, اشتراكات: 52 },
-        { month: 'يونيو', مستخدمين: totalUsersRes.count || 120, اشتراكات: activeSubsRes.count || 70 },
-      ];
+      const monthFmt = new Intl.DateTimeFormat('ar', { month: 'short' });
+      const bucketByMonth = (
+        rows: { created_at: string }[],
+        start: Date,
+      ) => {
+        const next = new Date(start.getFullYear(), start.getMonth() + 1, 1);
+        return rows.filter((r) => {
+          const t = new Date(r.created_at);
+          return t >= start && t < next;
+        }).length;
+      };
+
+      const chartData = monthStarts.map((ms) => ({
+        month: monthFmt.format(ms),
+        مستخدمون: bucketByMonth(usersGrowthRes.data ?? [], ms),
+        اشتراكات: bucketByMonth(subsGrowthRes.data ?? [], ms),
+      }));
+
+      const hasErrors = [
+        totalUsersRes, activeUsersRes, suspendedUsersRes,
+        activeSubsRes, expiredSubsRes, expiring7Res, expiring30Res,
+        vouchersRes, recentUsersRes, usersGrowthRes, subsGrowthRes,
+      ].some((r) => r.failed);
 
       return {
         totalUsers: totalUsersRes.count ?? 0,
@@ -154,42 +221,55 @@ export default function DashboardPage() {
         totalVoucherUsages,
         recentUsers: recentUsersRes.data ?? [],
         chartData,
+        hasErrors,
       };
     },
-    staleTime: 60_000,
   });
 
-  if (isLoading) {
-    return (
-      <div className="space-y-5">
-        <div>
-          <Skeleton className="h-7 w-48 mb-2" />
-          <Skeleton className="h-4 w-72" />
-        </div>
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="h-28" />)}
-        </div>
-        <div className="grid gap-5 lg:grid-cols-7">
-          <Skeleton className="h-80 lg:col-span-4" />
-          <Skeleton className="h-80 lg:col-span-3" />
-        </div>
-      </div>
-    );
-  }
+  if (isLoading) return <PageSkeleton />;
+
+  // Greeting based on time
+  const hour = new Date().getHours();
+  const greeting =
+    hour < 12 ? 'صباح الخير' : hour < 17 ? 'مساء الخير' : 'مساء النور';
 
   return (
-    <div className="space-y-6">
-      {/* Page Title */}
-      <div>
-        <h1 className="text-xl font-bold tracking-tight">نظرة عامة</h1>
-        <p className="text-sm text-muted-foreground mt-0.5">
-          مؤشرات الأداء الرئيسية لخدمة رافدين فاينانس
-        </p>
+    <div className="space-y-7">
+      {/* ─── Page header ─────────────────────────────────────────── */}
+      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+        <div>
+          <p className="text-sm text-muted-foreground font-medium mb-0.5">
+            {greeting}،{' '}
+            <span className="text-foreground font-semibold">
+              {adminProfile?.name ?? 'مدير النظام'}
+            </span>
+          </p>
+          <h1 className="text-2xl font-extrabold tracking-tight leading-tight">
+            نظرة عامة على النظام
+          </h1>
+        </div>
+
+        <div className="text-[11px] text-muted-foreground font-medium">
+          {new Intl.DateTimeFormat('ar-IQ', {
+            weekday: 'long',
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric',
+          }).format(new Date())}
+        </div>
       </div>
 
-      {/* KPI Grid */}
+      {/* Error banner */}
+      {stats?.hasErrors && (
+        <div className="flex items-center gap-2 rounded-xl border border-amber-500/25 bg-amber-500/8 px-4 py-2.5 text-xs font-semibold text-amber-600 dark:text-amber-400">
+          <AlertTriangle size={14} className="shrink-0" />
+          تعذر تحميل بعض البيانات — الأرقام المعروضة قد تكون غير مكتملة
+        </div>
+      )}
+
+      {/* ─── KPI Grid ────────────────────────────────────────────── */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <KPICard
+        <StatCard
           title="إجمالي المستخدمين"
           value={stats?.totalUsers ?? 0}
           sub={`${stats?.activeUsers ?? 0} حساب نشط`}
@@ -197,7 +277,7 @@ export default function DashboardPage() {
           color="indigo"
           trend="up"
         />
-        <KPICard
+        <StatCard
           title="الاشتراكات النشطة"
           value={stats?.activeSubs ?? 0}
           sub="اشتراك مزامنة سحابية"
@@ -205,7 +285,7 @@ export default function DashboardPage() {
           color="emerald"
           trend="up"
         />
-        <KPICard
+        <StatCard
           title="تنتهي خلال 7 أيام"
           value={stats?.expiring7 ?? 0}
           sub="تحتاج متابعة فورية"
@@ -213,7 +293,7 @@ export default function DashboardPage() {
           color="amber"
           trend={stats?.expiring7 ? 'down' : 'neutral'}
         />
-        <KPICard
+        <StatCard
           title="حسابات موقوفة"
           value={stats?.suspendedUsers ?? 0}
           sub="ممنوعة من المزامنة"
@@ -221,7 +301,7 @@ export default function DashboardPage() {
           color="rose"
           trend="neutral"
         />
-        <KPICard
+        <StatCard
           title="أكواد التفعيل"
           value={stats?.totalVouchers ?? 0}
           sub={`${stats?.totalVoucherUsages ?? 0} استخدام إجمالي`}
@@ -229,7 +309,7 @@ export default function DashboardPage() {
           color="violet"
           trend="neutral"
         />
-        <KPICard
+        <StatCard
           title="اشتراكات منتهية"
           value={stats?.expiredSubs ?? 0}
           sub="تحتاج للتجديد"
@@ -237,7 +317,7 @@ export default function DashboardPage() {
           color="rose"
           trend="neutral"
         />
-        <KPICard
+        <StatCard
           title="تنتهي خلال 30 يوم"
           value={stats?.expiring30 ?? 0}
           sub="فرص التجديد القريبة"
@@ -245,7 +325,7 @@ export default function DashboardPage() {
           color="amber"
           trend="neutral"
         />
-        <KPICard
+        <StatCard
           title="المستخدمون النشطون"
           value={stats?.activeUsers ?? 0}
           sub={`من أصل ${stats?.totalUsers ?? 0} مستخدم`}
@@ -255,99 +335,169 @@ export default function DashboardPage() {
         />
       </div>
 
-      {/* Charts + Recent Users */}
+      {/* ─── Chart + Recent users ─────────────────────────────────── */}
       <div className="grid gap-5 lg:grid-cols-7">
         {/* Area Chart */}
-        <div className="lg:col-span-4 rounded-2xl border border-border bg-card p-5">
-          <div className="flex items-center justify-between mb-5">
-            <div>
-              <h3 className="font-bold text-base">نمو المستخدمين</h3>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                إحصائيات الانضمام الشهرية
-              </p>
+        <div className="lg:col-span-4 rounded-2xl border border-border bg-card overflow-hidden">
+          {/* Card header */}
+          <div className="flex items-center justify-between px-6 py-4 border-b border-border">
+            <div className="flex items-center gap-3">
+              <div className="h-9 w-9 rounded-xl bg-indigo-500/10 flex items-center justify-center text-indigo-500 dark:text-indigo-400">
+                <TrendingUp size={17} />
+              </div>
+              <div>
+                <h3 className="font-bold text-sm leading-tight">نمو المستخدمين</h3>
+                <p className="text-[11px] text-muted-foreground mt-0.5">
+                  إحصائيات الانضمام الشهرية
+                </p>
+              </div>
             </div>
-            <div className="flex items-center gap-3 text-xs text-muted-foreground">
+            <div className="flex items-center gap-3 text-[11px] text-muted-foreground">
               <span className="flex items-center gap-1.5">
-                <span className="w-2.5 h-2.5 rounded-full bg-indigo-500" />
-                مستخدمين
+                <span className="inline-block h-2 w-2 rounded-full bg-indigo-500" />
+                مستخدمون
               </span>
               <span className="flex items-center gap-1.5">
-                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
+                <span className="inline-block h-2 w-2 rounded-full bg-emerald-500" />
                 اشتراكات
               </span>
             </div>
           </div>
-          <div className="h-[240px]">
+
+          {/* Chart area */}
+          <div className="px-4 pb-5 pt-4 h-[240px]">
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={stats?.chartData} margin={{ top: 4, right: 0, left: -20, bottom: 0 }}>
+              <AreaChart
+                data={stats?.chartData}
+                margin={{ top: 4, right: 2, left: -18, bottom: 0 }}
+              >
                 <defs>
-                  <linearGradient id="grad-users" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#6366f1" stopOpacity={0.2} />
+                  <linearGradient id="gu" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#6366f1" stopOpacity={0.18} />
                     <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
                   </linearGradient>
-                  <linearGradient id="grad-subs" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#10b981" stopOpacity={0.2} />
+                  <linearGradient id="gs" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#10b981" stopOpacity={0.18} />
                     <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
                   </linearGradient>
                 </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="currentColor" className="text-border" opacity={0.4} />
-                <XAxis dataKey="month" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
-                <YAxis tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
+                <CartesianGrid
+                  strokeDasharray="3 3"
+                  stroke="currentColor"
+                  className="text-border"
+                  opacity={0.35}
+                />
+                <XAxis
+                  dataKey="month"
+                  tick={{ fontSize: 11, fill: 'currentColor' }}
+                  className="text-muted-foreground"
+                  tickLine={false}
+                  axisLine={false}
+                />
+                <YAxis
+                  tick={{ fontSize: 11, fill: 'currentColor' }}
+                  className="text-muted-foreground"
+                  tickLine={false}
+                  axisLine={false}
+                  allowDecimals={false}
+                />
                 <Tooltip content={<CustomTooltip />} />
-                <Area type="monotone" dataKey="مستخدمين" stroke="#6366f1" strokeWidth={2} fill="url(#grad-users)" dot={false} activeDot={{ r: 4 }} />
-                <Area type="monotone" dataKey="اشتراكات" stroke="#10b981" strokeWidth={2} fill="url(#grad-subs)" dot={false} activeDot={{ r: 4 }} />
+                <Area
+                  type="monotone"
+                  dataKey="مستخدمون"
+                  stroke="#6366f1"
+                  strokeWidth={2}
+                  fill="url(#gu)"
+                  dot={false}
+                  activeDot={{ r: 4, strokeWidth: 0 }}
+                />
+                <Area
+                  type="monotone"
+                  dataKey="اشتراكات"
+                  stroke="#10b981"
+                  strokeWidth={2}
+                  fill="url(#gs)"
+                  dot={false}
+                  activeDot={{ r: 4, strokeWidth: 0 }}
+                />
               </AreaChart>
             </ResponsiveContainer>
           </div>
         </div>
 
-        {/* Recent Users */}
-        <div className="lg:col-span-3 rounded-2xl border border-border bg-card p-5">
-          <div className="flex items-center justify-between mb-5">
-            <div>
-              <h3 className="font-bold text-base">آخر المسجلين</h3>
-              <p className="text-xs text-muted-foreground mt-0.5">أحدث الحسابات</p>
+        {/* Recent users */}
+        <div className="lg:col-span-3 rounded-2xl border border-border bg-card overflow-hidden">
+          {/* Card header */}
+          <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+            <div className="flex items-center gap-3">
+              <div className="h-9 w-9 rounded-xl bg-emerald-500/10 flex items-center justify-center text-emerald-600 dark:text-emerald-400">
+                <Users size={16} />
+              </div>
+              <div>
+                <h3 className="font-bold text-sm leading-tight">آخر المسجلين</h3>
+                <p className="text-[11px] text-muted-foreground mt-0.5">
+                  أحدث الحسابات في النظام
+                </p>
+              </div>
             </div>
             <Link
               href="/users"
-              className="flex items-center gap-1 text-xs font-semibold text-indigo-500 dark:text-indigo-400 hover:underline"
+              className="flex items-center gap-1 text-[12px] font-semibold text-primary hover:underline underline-offset-2 shrink-0"
             >
-              عرض الكل <ArrowUpRight size={13} />
+              عرض الكل
+              <ArrowUpRight size={13} />
             </Link>
           </div>
 
-          {!stats?.recentUsers?.length ? (
-            <div className="flex flex-col items-center justify-center py-10 text-center">
-              <ShieldCheck size={32} className="text-muted-foreground/30 mb-3" />
-              <p className="text-sm text-muted-foreground">لا يوجد مستخدمون بعد</p>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {stats.recentUsers.map((u: any) => (
-                <div
-                  key={u.id}
-                  className="flex items-center gap-3 p-3 rounded-xl hover:bg-muted/50 transition-colors"
-                >
-                  <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center text-white text-xs font-bold shrink-0">
-                    {u.name?.charAt(0) || '؟'}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold truncate">{u.name}</p>
-                    <p className="text-xs text-muted-foreground truncate" dir="ltr">{u.phone}</p>
-                  </div>
-                  <span className={`
-                    text-[10px] font-bold px-2 py-0.5 rounded-full border shrink-0
-                    ${u.status === 'active'
-                      ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20'
-                      : 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20'
-                    }
-                  `}>
-                    {u.status === 'active' ? 'نشط' : 'موقوف'}
-                  </span>
+          <div className="p-3">
+            {!stats?.recentUsers?.length ? (
+              <div className="flex flex-col items-center justify-center py-12 text-center">
+                <div className="h-12 w-12 rounded-2xl bg-muted/60 flex items-center justify-center mb-3">
+                  <ShieldCheck size={22} className="text-muted-foreground/40" />
                 </div>
-              ))}
-            </div>
-          )}
+                <p className="text-sm text-muted-foreground font-medium">
+                  لا يوجد مستخدمون بعد
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-1">
+                {stats.recentUsers.map((u: any) => (
+                  <Link
+                    key={u.id}
+                    href={`/users/${u.id}`}
+                    className="flex items-center gap-3 rounded-xl px-3 py-2.5 hover:bg-muted/50 transition-colors group"
+                  >
+                    {/* Avatar */}
+                    <div className="h-8 w-8 shrink-0 rounded-lg bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center text-white text-xs font-bold shadow-sm">
+                      {(u.name ?? '؟').charAt(0)}
+                    </div>
+
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[13px] font-semibold truncate text-foreground leading-tight">
+                        {u.name}
+                      </p>
+                      <p
+                        className="text-[11px] text-muted-foreground truncate"
+                        dir="ltr"
+                      >
+                        {u.phone}
+                      </p>
+                    </div>
+
+                    <span
+                      className={`shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                        u.status === 'active'
+                          ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/20'
+                          : 'bg-rose-500/10 text-rose-700 dark:text-rose-400 border-rose-500/20'
+                      }`}
+                    >
+                      {u.status === 'active' ? 'نشط' : 'موقوف'}
+                    </span>
+                  </Link>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>

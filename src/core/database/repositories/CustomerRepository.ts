@@ -1,5 +1,6 @@
 import { db } from '../db';
 import { randomUUID } from 'expo-crypto';
+import { triggerBackgroundSync } from '../../supabase/syncService';
 
 export interface Customer {
   id: string;
@@ -44,6 +45,8 @@ export class CustomerRepository {
       [randomUUID(), 'customers', id, 'INSERT', now]
     );
 
+    triggerBackgroundSync(customer.store_id);
+
     return this.getById(id)!;
   }
 
@@ -67,10 +70,13 @@ export class CustomerRepository {
       [randomUUID(), 'customers', id, 'UPDATE', now]
     );
 
+    triggerBackgroundSync(existing.store_id);
+
     return this.getById(id);
   }
 
   static softDelete(id: string): void {
+    const existing = this.getById(id);
     const now = new Date().toISOString();
     db.runSync(`UPDATE customers SET deleted_at = ?, updated_at = ?, version = version + 1 WHERE id = ?`, [now, now, id]);
 
@@ -79,5 +85,9 @@ export class CustomerRepository {
       `INSERT INTO sync_queue (id, table_name, record_id, operation, created_at) VALUES (?, ?, ?, ?, ?)`,
       [randomUUID(), 'customers', id, 'DELETE', now]
     );
+
+    if (existing?.store_id) {
+      triggerBackgroundSync(existing.store_id);
+    }
   }
 }

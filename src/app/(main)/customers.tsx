@@ -2,10 +2,11 @@ import React, { useState } from 'react';
 import { View, StyleSheet, TouchableOpacity, RefreshControl, StatusBar, Modal, KeyboardAvoidingView, Platform, ScrollView, Linking, FlatList } from 'react-native';
 import { Text, useTheme, FAB, Avatar, Surface, Chip, Divider, ProgressBar } from 'react-native-paper';
 import { Search, Plus, Phone, MapPin, X, UserCheck, PhoneCall, MessageCircle, FileText, Calendar, DollarSign, Clock, CheckCircle } from 'lucide-react-native';
-import Animated from 'react-native-reanimated';
+import Animated, { FadeIn } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { TextInput } from 'react-native-paper';
 import { useCustomers, useCreateCustomer } from '../../features/customers/api/useCustomers';
+import { useDebts } from '../../features/debts/api/useDebts';
 import { useAppStore } from '../../core/store/appStore';
 import AppInput from '../../shared/components/AppInput';
 import AppButton from '../../shared/components/AppButton';
@@ -60,7 +61,7 @@ function CustomerStatsHeader({ total, active, paid }: { total: number; active: n
   );
 }
 
-function CustomerCard({ item, onPress, onWhatsApp, onCall }: { item: any; onPress: (item: any) => void; onWhatsApp: (phone: string) => void; onCall: (phone: string) => void }) {
+const CustomerCard = React.memo(function CustomerCard({ item, onPress, onWhatsApp, onCall }: { item: any; onPress: (item: any) => void; onWhatsApp: (phone: string) => void; onCall: (phone: string) => void }) {
   const theme = useTheme();
   const hasDebt = (item.total_debt || 0) > 0;
   const isOverdue = item.status === 'overdue';
@@ -159,7 +160,7 @@ function CustomerCard({ item, onPress, onWhatsApp, onCall }: { item: any; onPres
       </TouchableOpacity>
     </Animated.View>
   );
-}
+});
 
 export default function CustomersScreen() {
   const theme = useTheme();
@@ -180,7 +181,17 @@ export default function CustomersScreen() {
   const [errorMsg, setErrorMsg] = useState('');
 
   const { data: customersData = [], isLoading: loading, refetch, isRefetching } = useCustomers();
+  const { data: allDebts = [] } = useDebts();
   const createCustomerMutation = useCreateCustomer();
+
+  const customerDebts = selectedCustomer
+    ? allDebts.filter((d: any) => d.customer_id === selectedCustomer.id)
+    : [];
+  const customerRemainingTotal = customerDebts.reduce(
+    (acc: number, d: any) =>
+      acc + (d.remaining_amount !== undefined ? d.remaining_amount : Math.max(0, (d.total_amount || 0) - (d.paid_amount || 0))),
+    0,
+  );
 
   const handleCallCustomer = (custPhone: string) => {
     if (custPhone) {
@@ -506,10 +517,10 @@ export default function CustomersScreen() {
                 >
                   <View style={styles.statItem}>
                     <Text variant="labelSmall" style={{ color: theme.colors.outline }}>
-                      إجمالي الديون
+                      المتبقي على العميل
                     </Text>
                     <Text variant="titleSmall" style={{ color: theme.colors.onSurface, fontFamily: 'Cairo_700Bold', marginTop: 2 }}>
-                      {formatCurrency(selectedCustomer.total_debt || 1200000)}
+                      {formatCurrency(customerRemainingTotal)}
                     </Text>
                   </View>
 
@@ -517,10 +528,10 @@ export default function CustomersScreen() {
 
                   <View style={styles.statItem}>
                     <Text variant="labelSmall" style={{ color: theme.colors.outline }}>
-                      الأقساط القائمة
+                      عدد السجلات
                     </Text>
                     <Text variant="titleSmall" style={{ color: theme.colors.primary, fontFamily: 'Cairo_700Bold', marginTop: 2 }}>
-                      4 أقساط
+                      {customerDebts.length}
                     </Text>
                   </View>
 
@@ -530,8 +541,8 @@ export default function CustomersScreen() {
                     <Text variant="labelSmall" style={{ color: theme.colors.outline }}>
                       الحالة المالية
                     </Text>
-                    <Text variant="titleSmall" style={{ color: (selectedCustomer.total_debt || 0) > 0 ? '#D97706' : '#16A34A', fontFamily: 'Cairo_700Bold', marginTop: 2 }}>
-                      {(selectedCustomer.total_debt || 0) > 0 ? 'نشط (عليه ديون)' : 'مسدد بالكامل'}
+                    <Text variant="titleSmall" style={{ color: customerRemainingTotal > 0 ? '#D97706' : '#16A34A', fontFamily: 'Cairo_700Bold', marginTop: 2 }}>
+                      {customerRemainingTotal > 0 ? 'نشط (عليه ديون)' : 'مسدد بالكامل'}
                     </Text>
                   </View>
                 </Surface>
@@ -540,36 +551,60 @@ export default function CustomersScreen() {
                   سجل الأقساط والديون لهذا العميل:
                 </Text>
 
-                {/* Sample Debt Breakdown Item */}
-                <View style={[styles.debtDetailCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.outlineVariant }]}>
-                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                    <Text variant="titleSmall" style={{ color: theme.colors.onSurface, fontFamily: 'Cairo_700Bold' }}>
-                      شراء أجهزة كهربائية وطباخ
-                    </Text>
-                    <View style={[styles.debtTag, { backgroundColor: '#FEF3C7' }]}>
-                      <Text variant="labelSmall" style={{ color: '#D97706', fontFamily: 'Cairo_700Bold' }}>
-                        جارِ السداد
-                      </Text>
-                    </View>
-                  </View>
-
-                  <Text variant="bodySmall" style={{ color: theme.colors.outline, marginBottom: 10 }}>
-                    المبلغ: {formatCurrency(1200000)} • المسدد: {formatCurrency(800000)} • المتبقي: {formatCurrency(400000)}
-                  </Text>
-
-                  <View style={{ marginBottom: 6 }}>
-                    <ProgressBar progress={0.66} color={theme.colors.primary} style={{ height: 6, borderRadius: 3 }} />
-                  </View>
-
-                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 }}>
-                    <Text variant="labelSmall" style={{ color: theme.colors.outline }}>
-                      القسط القادم: غداً (200,000 د.ع)
-                    </Text>
-                    <Text variant="labelSmall" style={{ color: theme.colors.primary, fontFamily: 'Cairo_700Bold' }}>
-                      نسبة السداد: 66%
+                {customerDebts.length === 0 ? (
+                  <View style={{ alignItems: 'center', paddingVertical: 24 }}>
+                    <Text variant="bodySmall" style={{ color: theme.colors.outline }}>
+                      لا توجد ديون أو أقساط مسجلة لهذا العميل بعد
                     </Text>
                   </View>
-                </View>
+                ) : (
+                  customerDebts.map((debt: any) => {
+                    const totalAmount = debt.total_amount || 0;
+                    const paidAmount = debt.paid_amount || 0;
+                    const remaining =
+                      debt.remaining_amount !== undefined
+                        ? debt.remaining_amount
+                        : Math.max(0, totalAmount - paidAmount);
+                    const progress = totalAmount > 0 ? paidAmount / totalAmount : 0;
+                    const isPaid = debt.status === 'paid' || remaining <= 0;
+                    const isOverdue = debt.status === 'overdue';
+                    const statusBg = isPaid ? '#DCFCE7' : isOverdue ? '#FFE4E6' : '#FEF3C7';
+                    const statusColor = isPaid ? '#16A34A' : isOverdue ? '#E11D48' : '#D97706';
+                    const statusLabel = isPaid ? 'مسدد بالكامل' : isOverdue ? 'متأخر السداد' : 'جارِ السداد';
+
+                    return (
+                      <View
+                        key={debt.id}
+                        style={[styles.debtDetailCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.outlineVariant }]}
+                      >
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                          <Text variant="titleSmall" style={{ color: theme.colors.onSurface, fontFamily: 'Cairo_700Bold' }} numberOfLines={1}>
+                            {debt.title || 'بدون عنوان'}
+                          </Text>
+                          <View style={[styles.debtTag, { backgroundColor: statusBg }]}>
+                            <Text variant="labelSmall" style={{ color: statusColor, fontFamily: 'Cairo_700Bold' }}>
+                              {statusLabel}
+                            </Text>
+                          </View>
+                        </View>
+
+                        <Text variant="bodySmall" style={{ color: theme.colors.outline, marginBottom: 10 }}>
+                          المبلغ: {formatCurrency(totalAmount)} • المسدد: {formatCurrency(paidAmount)} • المتبقي: {formatCurrency(remaining)}
+                        </Text>
+
+                        <View style={{ marginBottom: 6 }}>
+                          <ProgressBar progress={progress} color={isPaid ? '#16A34A' : theme.colors.primary} style={{ height: 6, borderRadius: 3 }} />
+                        </View>
+
+                        <View style={{ flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', marginTop: 4 }}>
+                          <Text variant="labelSmall" style={{ color: theme.colors.primary, fontFamily: 'Cairo_700Bold' }}>
+                            نسبة السداد: {Math.round(progress * 100)}%
+                          </Text>
+                        </View>
+                      </View>
+                    );
+                  })
+                )}
 
               </ScrollView>
             )}

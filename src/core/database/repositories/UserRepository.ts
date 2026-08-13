@@ -366,6 +366,72 @@ export class UserRepository {
 
     throw new Error('رقم الهاتف غير مسجل في النظام');
   }
+
+  static async changePassword(userId: string, currentPlaintext: string, newPlaintext: string): Promise<void> {
+    const user = this.getById(userId);
+    if (!user) throw new Error('المستخدم غير موجود');
+
+    const currentHash = await this.hashPassword(currentPlaintext);
+    if (user.password_hash !== currentHash) {
+      throw new Error('كلمة المرور الحالية غير صحيحة');
+    }
+
+    if (newPlaintext.length < 6) {
+      throw new Error('كلمة المرور الجديدة يجب أن تكون 6 أحرف على الأقل');
+    }
+
+    const newHash = await this.hashPassword(newPlaintext);
+    const now = new Date().toISOString();
+
+    // Update locally
+    db.runSync(
+      `UPDATE users SET password_hash = ?, updated_at = ?, version = version + 1 WHERE id = ?`,
+      [newHash, now, userId]
+    );
+
+    // Add sync queue entry
+    db.runSync(
+      `INSERT OR IGNORE INTO sync_queue (id, table_name, record_id, operation, created_at)
+       VALUES (?, 'users', ?, 'UPDATE', ?)`,
+      [randomUUID(), userId, now]
+    );
+
+    // Update cloud if online
+    try {
+      await supabase.auth.updateUser({ password: newPlaintext });
+      await supabase.from('users').update({ password_hash: newHash, updated_at: now }).eq('id', userId);
+    } catch (err) {
+      console.warn('[UserRepository] Cloud password update skipped/failed:', err);
+    }
+  }
+
+  static async updateProfile(userId: string, updates: { name: string; phone: string }): Promise<void> {
+    const name = updates.name.trim();
+    const phone = updates.phone.trim();
+    if (!name) throw new Error('يرجى إدخال الاسم الكامل');
+
+    const now = new Date().toISOString();
+
+    // Update locally
+    db.runSync(
+      `UPDATE users SET name = ?, phone = ?, updated_at = ?, version = version + 1 WHERE id = ?`,
+      [name, phone, now, userId]
+    );
+
+    // Add sync queue entry
+    db.runSync(
+      `INSERT OR IGNORE INTO sync_queue (id, table_name, record_id, operation, created_at)
+       VALUES (?, 'users', ?, 'UPDATE', ?)`,
+      [randomUUID(), userId, now]
+    );
+
+    // Update cloud if online
+    try {
+      await supabase.from('users').update({ name, phone, updated_at: now }).eq('id', userId);
+    } catch (err) {
+      console.warn('[UserRepository] Cloud profile update skipped/failed:', err);
+    }
+  }
 }
 
 

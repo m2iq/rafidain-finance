@@ -7,26 +7,34 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { ArrowRight, User, Phone, Calendar, ShieldCheck, ShieldAlert, CreditCard, Laptop, Database, PlusCircle, CheckCircle2, AlertCircle } from 'lucide-react';
+import { ArrowRight, User, Phone, Calendar, ShieldCheck, ShieldAlert, CreditCard, Laptop, Database, PlusCircle, CheckCircle2, AlertCircle, Pencil } from 'lucide-react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from '@/components/ui/dialog';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { useAuth } from '@/components/providers/AuthProvider';
+import { logAdminAction } from '@/lib/audit';
+import { toast } from '@/components/ui/toast';
+import { formatIQD } from '@/lib/format';
 
 export default function UserDetailsPage() {
   const params = useParams();
   const userId = params.id as string;
   const queryClient = useQueryClient();
+  const { adminProfile } = useAuth();
 
   const [extendDays, setExtendDays] = useState(30);
   const [isExtendModalOpen, setIsExtendModalOpen] = useState(false);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [editForm, setEditForm] = useState({ name: '', phone: '', role: 'owner' });
 
   const { data: user, isLoading } = useQuery({
     queryKey: ['adminUserDetail', userId],
     queryFn: async () => {
-      const [userRes, customersCount, debtsCount, devicesRes] = await Promise.all([
+      const [userRes, customersCount, debtsAmounts, devicesRes] = await Promise.all([
         supabase
           .from('users')
           .select(`
@@ -36,20 +44,59 @@ export default function UserDetailsPage() {
           .eq('id', userId)
           .single(),
         supabase.from('customers').select('*', { count: 'exact', head: true }).eq('store_id', userId),
-        supabase.from('debts').select('*', { count: 'exact', head: true }).eq('store_id', userId),
+        supabase.from('debts').select('total_amount, paid_amount').eq('store_id', userId),
         supabase.from('user_devices').select('*').eq('user_id', userId),
       ]);
 
       if (userRes.error) throw userRes.error;
 
+      const debtRows = debtsAmounts.data || [];
+      const totalDebtAmount = debtRows.reduce((acc: number, d: any) => acc + (d.total_amount || 0), 0);
+      const totalPaidAmount = debtRows.reduce((acc: number, d: any) => acc + (d.paid_amount || 0), 0);
+
       return {
         ...userRes.data,
         customersCount: customersCount.count || 0,
-        debtsCount: debtsCount.count || 0,
+        debtsCount: debtRows.length,
+        totalDebtAmount,
+        totalPaidAmount,
         devices: devicesRes.data || [],
       };
     },
   });
+
+  const editUserMutation = useMutation({
+    mutationFn: async (payload: typeof editForm) => {
+      const { error } = await supabase
+        .from('users')
+        .update({
+          name: payload.name.trim(),
+          phone: payload.phone.trim(),
+          role: payload.role,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', userId);
+      if (error) throw error;
+
+      if (adminProfile) {
+        await logAdminAction(adminProfile.id, 'edit_user', userId, payload);
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['adminUserDetail', userId] });
+      setIsEditModalOpen(false);
+      toast.add({ title: 'تم تحديث بيانات المستخدم', type: 'success' });
+    },
+    onError: (err: any) => {
+      toast.add({ title: 'فشل تحديث بيانات المستخدم', description: err.message, type: 'error' });
+    },
+  });
+
+  const openEditModal = () => {
+    if (!user) return;
+    setEditForm({ name: user.name || '', phone: user.phone || '', role: user.role || 'owner' });
+    setIsEditModalOpen(true);
+  };
 
   const getLatestSub = () => {
     if (!user?.subscriptions) return null;
@@ -101,13 +148,24 @@ export default function UserDetailsPage() {
           }]);
         if (error) throw error;
       }
+
+      if (adminProfile) {
+        await supabase.from('subscription_history').insert([{
+          store_id: userId,
+          plan_tier: targetTier,
+          action: currentSub ? 'extended' : 'activated',
+          days_added: days,
+          by_admin_id: adminProfile.id,
+        }]);
+        await logAdminAction(adminProfile.id, 'extend_subscription', userId, { days, plan_tier: targetTier });
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['adminUserDetail', userId] });
       setIsExtendModalOpen(false);
     },
     onError: (err: any) => {
-      alert('حدث خطأ أثناء تجديد الاشتراك: ' + (err.message || 'خطأ غير معروف'));
+      toast.add({ title: 'حدث خطأ أثناء تجديد الاشتراك', description: err.message, type: 'error' });
     },
   });
 
@@ -124,6 +182,16 @@ export default function UserDetailsPage() {
         })
         .eq('store_id', userId);
       if (error) throw error;
+
+      if (adminProfile) {
+        await supabase.from('subscription_history').insert([{
+          store_id: userId,
+          plan_tier: getLatestSub()?.plan_tier || 'free',
+          action: 'cancelled',
+          by_admin_id: adminProfile.id,
+        }]);
+        await logAdminAction(adminProfile.id, 'cancel_subscription', userId);
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['adminUserDetail', userId] });
@@ -138,6 +206,14 @@ export default function UserDetailsPage() {
         .update({ status: newStatus, updated_at: new Date().toISOString() })
         .eq('id', userId);
       if (error) throw error;
+
+      if (adminProfile) {
+        await logAdminAction(
+          adminProfile.id,
+          newStatus === 'active' ? 'reactivate_user' : 'suspend_user',
+          userId,
+        );
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['adminUserDetail', userId] });
@@ -189,6 +265,13 @@ export default function UserDetailsPage() {
         </div>
 
         <div className="flex items-center gap-3">
+          <Button
+            variant="outline"
+            onClick={openEditModal}
+            className="rounded-xl text-xs font-semibold"
+          >
+            <Pencil className="ml-2 h-4 w-4" /> تعديل البيانات
+          </Button>
           {user.status === 'active' ? (
             <Button
               variant="destructive"
@@ -349,6 +432,14 @@ export default function UserDetailsPage() {
                 <span className="text-xs text-indigo-800 dark:text-indigo-300 font-semibold block">إجمالي الديون والمستندات</span>
                 <span className="text-2xl font-extrabold text-indigo-600 dark:text-indigo-400">{user.debtsCount}</span>
               </div>
+              <div className="p-4 bg-amber-50 dark:bg-amber-950/30 rounded-xl border border-amber-100 dark:border-amber-900/50">
+                <span className="text-xs text-amber-800 dark:text-amber-300 font-semibold block">إجمالي مبالغ الديون</span>
+                <span className="text-lg font-extrabold text-amber-600 dark:text-amber-400">{formatIQD(user.totalDebtAmount)}</span>
+              </div>
+              <div className="p-4 bg-teal-50 dark:bg-teal-950/30 rounded-xl border border-teal-100 dark:border-teal-900/50">
+                <span className="text-xs text-teal-800 dark:text-teal-300 font-semibold block">إجمالي المُحصّل</span>
+                <span className="text-lg font-extrabold text-teal-600 dark:text-teal-400">{formatIQD(user.totalPaidAmount)}</span>
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -381,6 +472,68 @@ export default function UserDetailsPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Edit User Dialog */}
+      <Dialog open={isEditModalOpen} onOpenChange={setIsEditModalOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Pencil className="h-5 w-5 text-indigo-600" /> تعديل بيانات المستخدم
+            </DialogTitle>
+            <DialogDescription>تعديل الاسم ورقم الهاتف ونوع الحساب</DialogDescription>
+          </DialogHeader>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              editUserMutation.mutate(editForm);
+            }}
+            className="space-y-4 py-3"
+          >
+            <div className="space-y-2">
+              <Label htmlFor="edit-name">الاسم الكامل</Label>
+              <Input
+                id="edit-name"
+                value={editForm.name}
+                onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+                className="rounded-xl"
+                required
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-phone">رقم الهاتف</Label>
+              <Input
+                id="edit-phone"
+                value={editForm.phone}
+                onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })}
+                className="rounded-xl"
+                dir="ltr"
+                required
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-role">نوع الحساب</Label>
+              <Select value={editForm.role} onValueChange={(val) => val && setEditForm({ ...editForm, role: val })}>
+                <SelectTrigger id="edit-role" className="rounded-xl">
+                  <SelectValue placeholder="نوع الحساب" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="owner">مالك المحل</SelectItem>
+                  <SelectItem value="employee">موظف</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <DialogFooter>
+              <Button
+                type="submit"
+                disabled={editUserMutation.isPending}
+                className="bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl"
+              >
+                {editUserMutation.isPending ? 'جاري الحفظ...' : 'حفظ التعديلات'}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -8,7 +8,7 @@ export const ar = {
   nav: {
     home: 'الرئيسية',
     customers: 'العملاء',
-    debts: 'الديون',
+    debts: 'الديون والأقساط',
     settings: 'الإعدادات',
   },
 
@@ -31,6 +31,7 @@ export const ar = {
     reports: 'التقارير المالية',
     reportsDesc: 'تحليل الأرباح والديون',
     sync: 'مزامنة',
+    payInstallment: 'تسديد قسط',
   },
 
   // ── العملاء ────────────────────────────────────
@@ -52,9 +53,13 @@ export const ar = {
 
   // ── الديون ────────────────────────────────────
   debts: {
-    title: 'الديون',
-    search: 'ابحث باسم العميل أو تفاصيل الدين...',
+    title: 'الديون والأقساط',
+    tabDebts: 'الديون',
+    tabInstallments: 'الأقساط',
+    searchDebts: 'ابحث عن ديون (اسم العميل أو الوصف)...',
+    searchInstallments: 'ابحث عن أقساط (العميل أو المنتج)...',
     totalActiveDebts: 'إجمالي الديون القائمة',
+    totalActiveInstallments: 'إجمالي الأقساط القائمة',
     overdueInstallments: 'الأقساط المتأخرة',
     dueThjisMonth: 'المستحق هذا الشهر',
     filterAll: 'الكل',
@@ -68,9 +73,12 @@ export const ar = {
     remaining: 'المتبقي:',
     nextInstallment: 'القسط القادم:',
     registerPayment: 'تسجيل دفعة',
-    addDebt: 'تسجيل دين جديد',
-    emptyTitle: 'لا يوجد ديون',
-    emptySubtitle: 'اضغط على + لتسجيل أول دين',
+    addDebt: 'تسجيل دين عادي',
+    addInstallment: 'تسجيل بيع بالتقسيط',
+    emptyTitleDebts: 'لا توجد ديون عادية',
+    emptySubtitleDebts: 'اضغط على + لتسجيل أول دين',
+    emptyTitleInstallments: 'لا توجد مبيعات تقسيط',
+    emptySubtitleInstallments: 'اضغط على + لتسجيل أول بيع',
   },
 
   // ── الإعدادات ────────────────────────────────────

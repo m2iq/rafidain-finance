@@ -1,13 +1,21 @@
 import { Component, ErrorInfo, useEffect, useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, I18nManager } from 'react-native';
-import { Stack } from 'expo-router';
+import { Stack, router } from 'expo-router';
 import { PaperProvider } from 'react-native-paper';
+import { LogBox } from 'react-native';
+import Constants from 'expo-constants';
+
+LogBox.ignoreLogs([
+  'Method getContentUriAsync imported from "expo-file-system" is deprecated',
+  'Method getInfoAsync imported from "expo-file-system" is deprecated',
+]);
 import { lightTheme, darkTheme } from '../shared/theme/theme';
 import { initializeDatabase } from '../core/database/db';
 import { useFonts, Cairo_400Regular, Cairo_600SemiBold, Cairo_700Bold } from '@expo-google-fonts/cairo';
 import * as SplashScreen from 'expo-splash-screen';
 import { useAppStore } from '../core/store/appStore';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import UpdateModal from '../shared/components/UpdateModal';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -77,6 +85,36 @@ export default function RootLayout() {
   }, []);
 
   useEffect(() => {
+    let subscription: any = null;
+    
+    // In Expo SDK 53+, remote notifications crash Expo Go. 
+    // We check if we are in Expo Go before requiring it.
+    if (Constants.executionEnvironment !== 'storeClient' && Constants.appOwnership !== 'expo') {
+      try {
+        const Notifications = require('expo-notifications');
+        subscription = Notifications.addNotificationResponseReceivedListener((response: any) => {
+          const data = response.notification.request.content.data;
+          if (data?.url === 'support-chat' || data?.type === 'support') {
+            setTimeout(() => {
+              router.push('/(main)/support-chat');
+            }, 100);
+          }
+        });
+      } catch (error) {
+        console.warn('Notifications not supported in this environment');
+      }
+    } else {
+      console.log('Running in Expo Go: Skipping remote push notifications setup.');
+    }
+    
+    return () => {
+      if (subscription) {
+        subscription.remove();
+      }
+    };
+  }, []);
+
+  useEffect(() => {
     try {
       initializeDatabase();
     } catch (error) {
@@ -107,6 +145,7 @@ export default function RootLayout() {
             <Stack.Screen name="(main)" />
             <Stack.Screen name="index" />
           </Stack>
+          <UpdateModal />
         </PaperProvider>
       </QueryClientProvider>
     </GlobalErrorBoundary>

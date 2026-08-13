@@ -1,24 +1,53 @@
 import { Tabs } from "expo-router";
 import { useEffect } from "react";
-import { ActivityIndicator, StatusBar, View } from "react-native";
+import { AppState, ActivityIndicator, StatusBar, View } from "react-native";
 import { useTheme } from "react-native-paper";
 import { useAppStore } from "../../core/store/appStore";
-import { checkLiveSubscription } from "../../core/supabase/syncService";
+import { checkLiveSubscription, triggerBackgroundSync } from "../../core/supabase/syncService";
+import { NotificationService } from "../../core/notifications/notificationService";
 import FloatingTabBar from "../../shared/components/FloatingTabBar";
 
 export default function MainLayout() {
-  console.log("[MAIN_LAYOUT] Component mounted");
   const theme = useTheme();
   const user = useAppStore((s) => s.user);
 
   useEffect(() => {
-    console.log(
-      "[MAIN_LAYOUT] useEffect for subscription check, user.id:",
-      user?.id,
-    );
-    if (user?.id) {
-      checkLiveSubscription(user.id);
-    }
+    if (!user?.id) return;
+
+    checkLiveSubscription(user.id);
+    NotificationService.init(user.id).then(() => {
+      NotificationService.fetchAndSyncSystemNotifications(user.id!);
+      NotificationService.checkAndScheduleDueNotifications(user.id!);
+    });
+
+    // Trigger initial background sync
+    triggerBackgroundSync(user.id);
+
+    // Auto periodic background sync every 15 seconds
+    const intervalId = setInterval(() => {
+      triggerBackgroundSync(user.id);
+    }, 15000);
+
+    // Fetch system notifications every 60 seconds
+    const notifIntervalId = setInterval(() => {
+      if (user?.id) {
+        NotificationService.fetchAndSyncSystemNotifications(user.id);
+      }
+    }, 60000);
+
+    // Auto sync when app returns from background to foreground
+    const appStateSub = AppState.addEventListener("change", (nextState) => {
+      if (nextState === "active" && user?.id) {
+        triggerBackgroundSync(user.id);
+        NotificationService.fetchAndSyncSystemNotifications(user.id);
+      }
+    });
+
+    return () => {
+      clearInterval(intervalId);
+      clearInterval(notifIntervalId);
+      appStateSub.remove();
+    };
   }, [user?.id]);
 
   const isDatabaseReady = useAppStore((s) => s.isDatabaseReady);
@@ -54,11 +83,23 @@ export default function MainLayout() {
       >
         <Tabs.Screen name="index" options={{ title: "الرئيسية" }} />
         <Tabs.Screen name="customers" options={{ title: "العملاء" }} />
-        <Tabs.Screen name="debts" options={{ title: "الديون" }} />
+        <Tabs.Screen name="debts" options={{ title: "الديون والأقساط" }} />
         <Tabs.Screen name="settings" options={{ title: "الإعدادات" }} />
         <Tabs.Screen
           name="subscription"
-          options={{ href: null, headerShown: false }}
+          options={{ href: null, headerShown: false, tabBarItemStyle: { display: 'none' } }}
+        />
+        <Tabs.Screen
+          name="change-password"
+          options={{ href: null, headerShown: false, tabBarItemStyle: { display: 'none' } }}
+        />
+        <Tabs.Screen
+          name="help-center"
+          options={{ href: null, headerShown: false, tabBarItemStyle: { display: 'none' } }}
+        />
+        <Tabs.Screen
+          name="notifications"
+          options={{ href: null, headerShown: false, tabBarItemStyle: { display: 'none' } }}
         />
       </Tabs>
     </>

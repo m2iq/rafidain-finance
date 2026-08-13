@@ -45,3 +45,6 @@ example
 # generated native folders
 /ios
 /android
+
+# google services keys
+google-services*.json

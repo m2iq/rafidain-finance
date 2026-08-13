@@ -16,7 +16,7 @@ export interface SyncProgress {
 // Smart Queue of any local unsynced records
 // ============================================
 export async function populateUnsyncedRecordsToQueue(storeId: string): Promise<number> {
-  const tables = ['customers', 'debts', 'installments', 'payments'];
+  const tables = ['customers', 'debts', 'debt_items', 'installments', 'payments'];
   const now = new Date().toISOString();
   let newlyQueued = 0;
 
@@ -168,6 +168,7 @@ export async function runSyncWithProgress(
     const tableNamesAr: Record<string, string> = {
       customers: 'العملاء',
       debts: 'الديون',
+      debt_items: 'عناصر الديون',
       installments: 'الأقساط',
       payments: 'السندات والمدفوعات',
     };
@@ -215,6 +216,12 @@ export async function runSyncWithProgress(
                 ...debtFields,
                 store_id: storeId,
                 due_date: record.due_date ? String(record.due_date).substring(0, 10) : null,
+              };
+            } else if (item.table_name === 'debt_items') {
+              payload = {
+                ...record,
+                store_id: storeId,
+                item_date: record.item_date ? String(record.item_date).substring(0, 10) : new Date().toISOString().substring(0, 10),
               };
             } else if (item.table_name === 'payments') {
               // Local-only columns that don't exist in the cloud `payments` table
@@ -328,7 +335,7 @@ export async function syncToCloud(storeId: string): Promise<void> {
 // Sync: Pull Cloud data → Local SQLite
 // ============================================
 export async function syncFromCloud(storeId: string): Promise<void> {
-  const tables = ['subscriptions', 'customers', 'debts', 'installments', 'payments'];
+  const tables = ['subscriptions', 'customers', 'debts', 'debt_items', 'installments', 'payments'];
 
   for (const table of tables) {
     try {

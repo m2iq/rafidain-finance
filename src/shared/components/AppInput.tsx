@@ -1,17 +1,20 @@
 import React, { useState } from 'react';
 import { View, StyleSheet, TextInput as RNTextInput, TouchableOpacity, KeyboardTypeOptions } from 'react-native';
 import { useTheme, Text } from 'react-native-paper';
-import { Eye, EyeOff, Phone, Lock, User, DollarSign, Calendar, ShoppingBag, MapPin } from 'lucide-react-native';
+import { Eye, EyeOff, Phone, Lock, User, DollarSign, Calendar, ShoppingBag, MapPin, Key, FileText, Shield } from 'lucide-react-native';
+import { formatPriceInput } from '../utils/currency';
 
 interface AppInputProps {
   label: string;
-  icon?: 'phone' | 'lock' | 'user' | 'dollar-sign' | 'calendar' | 'shopping-bag' | 'map-pin';
+  icon?: 'phone' | 'lock' | 'user' | 'dollar-sign' | 'calendar' | 'shopping-bag' | 'map-pin' | 'key' | 'file-text' | 'shield';
   value: string;
   onChangeText: (text: string) => void;
   secureTextEntry?: boolean;
   keyboardType?: KeyboardTypeOptions;
   error?: string;
   placeholder?: string;
+  isCurrency?: boolean;
+  autoCapitalize?: 'none' | 'sentences' | 'words' | 'characters';
 }
 
 const ICONS = {
@@ -22,6 +25,9 @@ const ICONS = {
   calendar: Calendar,
   'shopping-bag': ShoppingBag,
   'map-pin': MapPin,
+  key: Key,
+  'file-text': FileText,
+  shield: Shield,
 };
 
 export default function AppInput({
@@ -33,12 +39,28 @@ export default function AppInput({
   keyboardType = 'default',
   error,
   placeholder,
+  isCurrency,
+  autoCapitalize,
 }: AppInputProps) {
   const theme = useTheme();
   const [isFocused, setIsFocused] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
+  const isPriceField = isCurrency ?? (icon === 'dollar-sign');
+
   const IconComponent = icon ? ICONS[icon] : null;
+
+  const handleChangeText = (text: string) => {
+    if (isPriceField) {
+      const formatted = formatPriceInput(text);
+      onChangeText(formatted);
+    } else {
+      onChangeText(text);
+    }
+  };
+
+  const displayValue = isPriceField ? formatPriceInput(value) : value;
+
 
   const borderColor = error
     ? theme.colors.error
@@ -83,9 +105,10 @@ export default function AppInput({
 
         {/* Text Input */}
         <RNTextInput
-          value={value}
-          onChangeText={onChangeText}
+          value={displayValue}
+          onChangeText={handleChangeText}
           keyboardType={keyboardType}
+          autoCapitalize={autoCapitalize}
           secureTextEntry={secureTextEntry && !showPassword}
           onFocus={() => setIsFocused(true)}
           onBlur={() => setIsFocused(false)}

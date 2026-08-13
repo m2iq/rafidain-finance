@@ -2,24 +2,34 @@
   "expo": {
     "name": "ديون واقساط الرافدين",
     "slug": "RafidainFinance",
-    "version": "1.0.0",
+    "version": "2.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/icon.png",
+    "icon": "./assets/images/rafidain-logo.png",
     "scheme": "rafidainfinance",
     "userInterfaceStyle": "automatic",
     "extra": {
-      "supportsRTL": true
+      "supportsRTL": true,
+      "router": {},
+      "eas": {
+        "projectId": "d467832a-806a-4d8c-8dc4-e20239890bcd"
+      }
     },
     "locales": {
       "ar": "./assets/locales/ar.json"
     },
     "ios": {
-      "icon": "./assets/images/icon.png"
+      "icon": "./assets/images/rafidain-logo.png",
+      "bundleIdentifier": "com.rafidain.finance",
+      "buildNumber": "2"
     },
     "android": {
+      "package": "com.rafidain.finance",
+      "versionCode": 2,
+      "googleServicesFile": "./google-services.json",
+      "permissions": ["REQUEST_INSTALL_PACKAGES", "POST_NOTIFICATIONS"],
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
-        "foregroundImage": "./assets/images/android-icon-foreground.png",
+        "foregroundImage": "./assets/images/rafidain-logo.png",
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
@@ -27,21 +37,28 @@
     },
     "web": {
       "output": "static",
-      "favicon": "./assets/images/favicon.png"
+      "favicon": "./assets/images/rafidain-logo.png"
     },
     "plugins": [
       "expo-router",
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#208AEF",
-          "image": "./assets/images/splash-icon.png",
-          "imageWidth": 76
+          "backgroundColor": "#3e2694",
+          "image": "./assets/images/rafidain-logo.png",
+          "imageWidth": 120
         }
       ],
       "expo-sqlite",
       "expo-secure-store",
-      "expo-font"
+      "expo-font",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/rafidain-logo.png",
+          "color": "#4F46E5"
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true

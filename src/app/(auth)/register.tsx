@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   ScrollView,
   StatusBar,
+  Image,
 } from 'react-native';
 import { Text, useTheme, Snackbar } from 'react-native-paper';
 import { useRouter } from 'expo-router';
@@ -27,33 +28,32 @@ export default function RegisterScreen() {
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [errorMsg, setErrorMsg] = useState('');
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
 
   const handleRegister = async () => {
     if (!name.trim() || !phone.trim() || !password.trim()) {
-      setError(ar.validation.allFieldsRequired);
+      setErrorMsg(ar.register.fieldsRequired);
       return;
     }
-    if (phone.trim().length < 10) {
-      setError(ar.validation.phoneMinLength);
+
+    if (password !== confirmPassword) {
+      setErrorMsg(ar.register.passwordMismatch);
       return;
     }
-    if (password.length < 6) {
-      setError(ar.validation.passwordMinLength);
-      return;
-    }
+
     setLoading(true);
     try {
-      const user = await UserRepository.create({
-        name: name.trim(),
-        phone: phone.trim(),
-        password_plaintext: password,
-      });
-      setUser({ id: user.id, name: user.name, phone: user.phone, role: user.role });
-      router.replace('/(main)');
+      const result = await UserRepository.register(name.trim(), phone.trim(), password);
+      if (result.success && result.user) {
+        setUser(result.user);
+        router.replace('/(main)');
+      } else {
+        setErrorMsg(result.error || ar.register.failed);
+      }
     } catch (err: any) {
-      setError(err.message || ar.validation.unexpectedError);
+      setErrorMsg(ar.register.failed);
     } finally {
       setLoading(false);
     }
@@ -61,24 +61,29 @@ export default function RegisterScreen() {
 
   return (
     <KeyboardAvoidingView
-      style={[styles.root, { backgroundColor: theme.colors.background }]}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      style={[styles.container, { backgroundColor: theme.colors.background }]}
     >
-      <AmbientBackground />
+      <AmbientBackground opacity={0.3} />
       <StatusBar
+        backgroundColor={theme.colors.background}
         barStyle={theme.dark ? 'light-content' : 'dark-content'}
-        backgroundColor="transparent"
         translucent
       />
+
       <ScrollView
-        contentContainerStyle={styles.inner}
+        contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
         {/* الهوية */}
         <Animated.View style={styles.brand}>
-          <View style={[styles.logo, { backgroundColor: theme.colors.primaryContainer }]}>
-            <UserPlus size={32} color={theme.colors.primary} strokeWidth={2} />
+          <View style={[styles.logo, { backgroundColor: 'transparent', elevation: 0, shadowOpacity: 0 }]}>
+            <Image
+              source={require('../../../assets/images/rafidain-logo.png')}
+              style={{ width: 72, height: 72, borderRadius: 16 }}
+              resizeMode="contain"
+            />
           </View>
           <Text variant="headlineMedium" style={{ color: theme.colors.onBackground, textAlign: 'center', fontFamily: 'Cairo_700Bold' }}>
             {ar.register.title}
@@ -145,13 +150,13 @@ export default function RegisterScreen() {
       </ScrollView>
 
       <Snackbar
-        visible={!!error}
-        onDismiss={() => setError('')}
+        visible={!!errorMsg}
+        onDismiss={() => setErrorMsg('')}
         duration={3500}
         style={{ backgroundColor: theme.colors.errorContainer }}
       >
         <Text style={{ color: theme.colors.onErrorContainer, fontFamily: 'Cairo_400Regular' }}>
-          {error}
+          {errorMsg}
         </Text>
       </Snackbar>
     </KeyboardAvoidingView>
@@ -159,9 +164,9 @@ export default function RegisterScreen() {
 }
 
 const styles = StyleSheet.create({
-  root:   { flex: 1 },
-  inner:  { flexGrow: 1, padding: 24, justifyContent: 'center', gap: 20 },
-  brand:  { alignItems: 'center', marginBottom: 4 },
+  container: { flex: 1 },
+  scrollContent: { flexGrow: 1, padding: 24, justifyContent: 'center', gap: 16 },
+  brand: { alignItems: 'center', marginBottom: 8 },
   logo: {
     width: 76,
     height: 76,
@@ -169,11 +174,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 16,
-    shadowColor: '#4F46E5',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
-    elevation: 4,
   },
   card: {
     borderRadius: 24,

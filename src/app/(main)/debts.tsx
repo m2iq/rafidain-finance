@@ -6,16 +6,22 @@ import {
   CreditCard,
   DollarSign,
   FilePlus,
+  History,
+  MessageCircle,
   Plus,
+  Receipt,
   Search,
+  Send,
+  Share2,
   UserCheck,
   UserPlus,
   X
 } from "lucide-react-native";
-import { useState } from "react";
+import { memo, useState } from "react";
 import {
   FlatList,
   KeyboardAvoidingView,
+  Linking,
   Modal,
   Platform,
   RefreshControl,
@@ -30,12 +36,13 @@ import {
   Chip,
   FAB,
   ProgressBar,
+  SegmentedButtons,
   Surface,
   Text,
   TextInput,
   useTheme,
 } from "react-native-paper";
-import Animated from "react-native-reanimated";
+import Animated, { FadeIn } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAppStore } from "../../core/store/appStore";
 import {
@@ -45,12 +52,15 @@ import {
 import {
   useCreateDebt,
   useDebts,
+  useDebtPayments,
   usePayDebt,
+  useAddDebtItem,
+  useDebtItems,
 } from "../../features/debts/api/useDebts";
 import AppButton from "../../shared/components/AppButton";
 import AppInput from "../../shared/components/AppInput";
 import ar from "../../shared/i18n/ar";
-import { formatCurrency } from "../../shared/utils/currency";
+import { formatCurrency, formatDateTime, formatDateOnly } from "../../shared/utils/currency";
 
 function DebtSummaryHeader({
   totalDebts,
@@ -129,7 +139,15 @@ function DebtSummaryHeader({
   );
 }
 
-function DebtCard({ item, onPay }: { item: any; onPay: (item: any) => void }) {
+const DebtCard = memo(function DebtCard({
+  item,
+  onPay,
+  onViewHistory,
+}: {
+  item: any;
+  onPay: (item: any) => void;
+  onViewHistory: (item: any) => void;
+}) {
   const theme = useTheme();
   const totalAmount = item.total_amount || item.totalAmount || 0;
   const paidAmount = item.paid_amount || item.paidAmount || 0;
@@ -168,7 +186,8 @@ function DebtCard({ item, onPay }: { item: any; onPay: (item: any) => void }) {
   return (
     <Animated.View>
       <TouchableOpacity
-        activeOpacity={0.8}
+        activeOpacity={0.85}
+        onPress={() => onViewHistory(item)}
         style={[
           styles.debtCard,
           {
@@ -316,23 +335,25 @@ function DebtCard({ item, onPay }: { item: any; onPay: (item: any) => void }) {
             { borderTopColor: theme.colors.outlineVariant },
           ]}
         >
-          <View style={styles.installmentInfo}>
-            <Clock
-              size={15}
-              color={isOverdue ? "#EF4444" : theme.colors.outline}
-            />
+          <TouchableOpacity
+            activeOpacity={0.7}
+            onPress={() => onViewHistory(item)}
+            style={[
+              styles.historyButton,
+              { backgroundColor: theme.dark ? "#1E293B" : "#F1F5F9" },
+            ]}
+          >
+            <History size={14} color={theme.colors.onSurfaceVariant} />
             <Text
               variant="labelSmall"
               style={{
-                color: isOverdue ? "#EF4444" : theme.colors.outline,
-                marginRight: 6,
+                color: theme.colors.onSurfaceVariant,
                 fontFamily: "Cairo_600SemiBold",
               }}
-              numberOfLines={1}
             >
-              المتبقي: {formatCurrency(Math.max(0, remaining))}
+              سجل التسديدات
             </Text>
-          </View>
+          </TouchableOpacity>
 
           {!isPaid && (
             <TouchableOpacity
@@ -351,7 +372,7 @@ function DebtCard({ item, onPay }: { item: any; onPay: (item: any) => void }) {
                   fontFamily: "Cairo_700Bold",
                 }}
               >
-                تسديد
+                تسديد دفعة
               </Text>
             </TouchableOpacity>
           )}
@@ -359,7 +380,7 @@ function DebtCard({ item, onPay }: { item: any; onPay: (item: any) => void }) {
       </TouchableOpacity>
     </Animated.View>
   );
-}
+});
 
 export default function DebtsScreen() {
   const theme = useTheme();
@@ -370,15 +391,18 @@ export default function DebtsScreen() {
   const { data: dbDebts = [], refetch, isRefetching } = useDebts();
   const createCustomerMutation = useCreateCustomer();
   const createDebtMutation = useCreateDebt();
+  const addDebtItemMutation = useAddDebtItem();
   const payDebtMutation = usePayDebt();
 
   const [filter, setFilter] = useState<"all" | "active" | "overdue" | "paid">(
     "all",
   );
   const [query, setQuery] = useState("");
+  const [activeTab, setActiveTab] = useState<"debts" | "installments">("debts");
 
   // Main Modals
-  const [addModalVisible, setAddModalVisible] = useState(false);
+  const [addModalVisible, setAddModalVisible] = useState(false); // for debts
+  const [addInstallmentModalVisible, setAddInstallmentModalVisible] = useState(false); // for installments
   const [payModalVisible, setPayModalVisible] = useState(false);
   const [custPickerVisible, setCustPickerVisible] = useState(false);
   const [quickAddCustVisible, setQuickAddCustVisible] = useState(false);
@@ -400,11 +424,21 @@ export default function DebtsScreen() {
   // Add Debt Form State
   const [debtTitle, setDebtTitle] = useState("");
   const [totalAmount, setTotalAmount] = useState("");
+
+  // Add Installment Form State
+  const [productName, setProductName] = useState("");
+  const [downPayment, setDownPayment] = useState("");
   const [installments, setInstallments] = useState("4");
 
   // Pay Form State
   const [payAmount, setPayAmount] = useState("");
+  const [paymentMethod, setPaymentMethod] = useState<"cash" | "transfer" | "other">("cash");
+  const [paymentNotes, setPaymentNotes] = useState("");
   const [formError, setFormError] = useState("");
+
+  // Detailed History Modal State
+  const [historyModalVisible, setHistoryModalVisible] = useState(false);
+  const [selectedDebtForHistory, setSelectedDebtForHistory] = useState<any>(null);
 
   // Safely map available customers for current user only
   const allAvailableCustomers = dbCustomers
@@ -489,12 +523,25 @@ export default function DebtsScreen() {
 
     try {
       setFormError("");
-      await createDebtMutation.mutateAsync({
-        customer_id: selectedCustomer.id,
-        store_id: user.id,
-        title: debtTitle.trim(),
-        total_amount: numericAmount,
-      });
+
+      const activeDebt = dbDebts.find((d: any) => d.customer_id === selectedCustomer.id && d.type === 'debt' && d.status !== 'paid');
+
+      if (activeDebt) {
+        await addDebtItemMutation.mutateAsync({
+          debtId: activeDebt.id,
+          description: debtTitle.trim(),
+          amount: numericAmount,
+          storeId: user.id,
+        });
+      } else {
+        await createDebtMutation.mutateAsync({
+          customer_id: selectedCustomer.id,
+          store_id: user.id,
+          title: 'حساب دين عام',
+          total_amount: numericAmount,
+          type: 'debt',
+        });
+      }
 
       // Reset
       setSelectedCustomer(null);
@@ -507,6 +554,49 @@ export default function DebtsScreen() {
     }
   };
 
+  const handleAddInstallment = async () => {
+    if (!user?.id) {
+      setFormError("يرجى تسجيل الدخول أولاً لإضافة قسط");
+      return;
+    }
+
+    if (!selectedCustomer || !productName.trim() || !totalAmount.trim()) {
+      setFormError("يرجى اختيار العميل وتعبئة اسم المنتج والمبلغ الكلي");
+      return;
+    }
+
+    const numericAmount = parseFloat(totalAmount.replace(/,/g, ""));
+    const numericDownPayment = downPayment.trim() ? parseFloat(downPayment.replace(/,/g, "")) : 0;
+
+    if (isNaN(numericAmount) || numericAmount <= 0) {
+      setFormError("يرجى إدخال مبلغ صحيح بالدينار العراقي");
+      return;
+    }
+
+    try {
+      setFormError("");
+      await createDebtMutation.mutateAsync({
+        customer_id: selectedCustomer.id,
+        store_id: user.id,
+        title: productName.trim(),
+        total_amount: numericAmount,
+        down_payment: numericDownPayment,
+        type: 'installment',
+      });
+
+      // Reset
+      setSelectedCustomer(null);
+      setProductName("");
+      setTotalAmount("");
+      setDownPayment("");
+      setInstallments("4");
+      setFormError("");
+      setAddInstallmentModalVisible(false);
+    } catch (err: any) {
+      setFormError(err.message || "فشل إضافة القسط");
+    }
+  };
+
   const handleOpenPay = (debt: any) => {
     setSelectedDebt(debt);
     const rem =
@@ -514,8 +604,15 @@ export default function DebtsScreen() {
         ? debt.remaining_amount
         : Math.max(0, (debt.total_amount || 0) - (debt.paid_amount || 0));
     setPayAmount(rem ? rem.toString() : "");
+    setPaymentMethod("cash");
+    setPaymentNotes("");
     setFormError("");
     setPayModalVisible(true);
+  };
+
+  const handleOpenHistory = (debt: any) => {
+    setSelectedDebtForHistory(debt);
+    setHistoryModalVisible(true);
   };
 
   const handleConfirmPayment = async () => {
@@ -532,17 +629,24 @@ export default function DebtsScreen() {
         debtId: selectedDebt.id,
         amount: numericPay,
         storeId: user.id,
+        paymentMethod,
+        notes: paymentNotes.trim() || undefined,
       });
 
       setPayModalVisible(false);
       setSelectedDebt(null);
       setPayAmount("");
+      setPaymentNotes("");
     } catch (err: any) {
       setFormError(err.message || "فشل تسديد القسط");
     }
   };
 
   const filtered = dbDebts.filter((item: any) => {
+    const isInstallment = item.type === 'installment';
+    if (activeTab === 'debts' && isInstallment) return false;
+    if (activeTab === 'installments' && !isInstallment) return false;
+
     const custName = item.customerName || "";
     const custPhone = item.customerPhone || "";
     const dTitle = item.title || "";
@@ -556,14 +660,19 @@ export default function DebtsScreen() {
     return matchesQuery && item.status === filter;
   });
 
-  const totalDebts = dbDebts.reduce(
+  const activeTabData = dbDebts.filter((item: any) => {
+    const isInstallment = item.type === 'installment';
+    return (activeTab === 'debts' && !isInstallment) || (activeTab === 'installments' && isInstallment);
+  });
+
+  const totalDebts = activeTabData.reduce(
     (acc: number, item: any) => acc + (item.total_amount || 0),
     0,
   );
-  const overdueAmount = dbDebts
+  const overdueAmount = activeTabData
     .filter((item: any) => item.status === "overdue")
     .reduce((acc: number, item: any) => acc + (item.remaining_amount || 0), 0);
-  const collectedAmount = dbDebts.reduce(
+  const collectedAmount = activeTabData.reduce(
     (acc: number, item: any) => acc + (item.paid_amount || 0),
     0,
   );
@@ -586,9 +695,30 @@ export default function DebtsScreen() {
           collectedAmount={collectedAmount}
         />
 
+        <View style={{ paddingHorizontal: 16, marginBottom: 12 }}>
+          <SegmentedButtons
+            value={activeTab}
+            onValueChange={(val) => setActiveTab(val as "debts" | "installments")}
+            buttons={[
+              {
+                value: "debts",
+                label: ar.debts.tabDebts,
+                checkedColor: theme.colors.onPrimary,
+                style: activeTab === "debts" ? { backgroundColor: theme.colors.primary } : {},
+              },
+              {
+                value: "installments",
+                label: ar.debts.tabInstallments,
+                checkedColor: theme.colors.onPrimary,
+                style: activeTab === "installments" ? { backgroundColor: theme.colors.primary } : {},
+              },
+            ]}
+          />
+        </View>
+
         <TextInput
           mode="outlined"
-          placeholder={ar.debts.search}
+          placeholder={activeTab === 'debts' ? ar.debts.searchDebts : ar.debts.searchInstallments}
           value={query}
           onChangeText={setQuery}
           style={[styles.search, { backgroundColor: theme.colors.surface }]}
@@ -685,7 +815,11 @@ export default function DebtsScreen() {
       <FlatList
         data={filtered}
         renderItem={({ item }) => (
-          <DebtCard item={item} onPay={handleOpenPay} />
+          <DebtCard
+            item={item}
+            onPay={handleOpenPay}
+            onViewHistory={handleOpenHistory}
+          />
         )}
         keyExtractor={(item) => item.id}
         contentContainerStyle={[
@@ -709,13 +843,13 @@ export default function DebtsScreen() {
                 fontFamily: "Cairo_700Bold",
               }}
             >
-              {ar.debts.emptyTitle}
+              {activeTab === 'debts' ? ar.debts.emptyTitleDebts : ar.debts.emptyTitleInstallments}
             </Text>
             <Text
               variant="bodySmall"
               style={{ color: theme.colors.outline, marginTop: 8 }}
             >
-              {ar.debts.emptySubtitle}
+              {activeTab === 'debts' ? ar.debts.emptySubtitleDebts : ar.debts.emptySubtitleInstallments}
             </Text>
           </View>
         }
@@ -730,7 +864,10 @@ export default function DebtsScreen() {
             bottom: 80 + insets.bottom,
           },
         ]}
-        onPress={() => setAddModalVisible(true)}
+        onPress={() => {
+          if (activeTab === 'debts') setAddModalVisible(true);
+          else setAddInstallmentModalVisible(true);
+        }}
       />
 
       {/* Modal - إضافة دين جديد */}
@@ -757,7 +894,7 @@ export default function DebtsScreen() {
                   variant="titleLarge"
                   style={[styles.modalTitle, { color: theme.colors.onSurface }]}
                 >
-                  تسجيل دين / قسط جديد
+                  {ar.debts.addDebt}
                 </Text>
               </View>
               <TouchableOpacity
@@ -872,8 +1009,8 @@ export default function DebtsScreen() {
               <View style={{ height: 14 }} />
 
               <AppInput
-                label="تفاصيل الدين / البضاعة *"
-                icon="shopping-bag"
+                label="تفاصيل الدين *"
+                icon="file-text"
                 value={debtTitle}
                 onChangeText={setDebtTitle}
               />
@@ -883,6 +1020,174 @@ export default function DebtsScreen() {
                 icon="dollar-sign"
                 value={totalAmount}
                 onChangeText={setTotalAmount}
+                keyboardType="numeric"
+              />
+
+              <View style={{ height: 24 }} />
+              <AppButton label="حفظ الدين" onPress={handleAddDebt} />
+            </ScrollView>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      {/* Modal - تسجيل بيع بالتقسيط */}
+      <Modal
+        visible={addInstallmentModalVisible}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setAddInstallmentModalVisible(false)}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
+          style={styles.modalOverlay}
+        >
+          <View
+            style={[
+              styles.modalContent,
+              { backgroundColor: theme.colors.surface },
+            ]}
+          >
+            <View style={styles.modalHeader}>
+              <View style={styles.modalTitleRow}>
+                <FilePlus size={22} color={theme.colors.primary} />
+                <Text
+                  variant="titleLarge"
+                  style={[styles.modalTitle, { color: theme.colors.onSurface }]}
+                >
+                  {ar.debts.addInstallment}
+                </Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => setAddInstallmentModalVisible(false)}
+                style={styles.closeBtn}
+              >
+                <X size={20} color={theme.colors.outline} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={styles.formContent}
+            >
+              {formError ? (
+                <View
+                  style={[
+                    styles.errorBox,
+                    { backgroundColor: theme.colors.errorContainer },
+                  ]}
+                >
+                  <Text
+                    style={{
+                      color: theme.colors.onErrorContainer,
+                      fontFamily: "Cairo_600SemiBold",
+                      fontSize: 13,
+                    }}
+                  >
+                    {formError}
+                  </Text>
+                </View>
+              ) : null}
+
+              {/* اختيار العميل */}
+              <Text
+                variant="labelMedium"
+                style={{
+                  color: theme.colors.outline,
+                  marginBottom: 6,
+                  fontFamily: "Cairo_600SemiBold",
+                }}
+              >
+                العميل المستفيد *
+              </Text>
+
+              <TouchableOpacity
+                activeOpacity={0.8}
+                onPress={() => setCustPickerVisible(true)}
+                style={[
+                  styles.customerSelectTrigger,
+                  {
+                    backgroundColor: selectedCustomer
+                      ? theme.colors.primaryContainer
+                      : theme.dark
+                        ? "#1E293B"
+                        : "#F8FAFC",
+                    borderColor: selectedCustomer
+                      ? theme.colors.primary
+                      : theme.colors.outlineVariant,
+                  },
+                ]}
+              >
+                <View style={styles.triggerCustomerInfo}>
+                  <Avatar.Text
+                    size={36}
+                    label={
+                      selectedCustomer
+                        ? (selectedCustomer.name || "ع").substring(0, 2)
+                        : "?"
+                    }
+                    style={{
+                      backgroundColor: selectedCustomer
+                        ? theme.colors.primary
+                        : theme.colors.surfaceVariant,
+                    }}
+                    color="#FFFFFF"
+                  />
+                  <View style={{ flex: 1, paddingHorizontal: 12 }}>
+                    <Text
+                      variant="titleSmall"
+                      style={{
+                        color: selectedCustomer
+                          ? theme.colors.primary
+                          : theme.colors.outline,
+                        fontFamily: "Cairo_700Bold",
+                      }}
+                    >
+                      {selectedCustomer
+                        ? selectedCustomer.name
+                        : "اضغط هنا لاختيار العميل من القائمة..."}
+                    </Text>
+                    {selectedCustomer && (
+                      <Text
+                        variant="bodySmall"
+                        style={{ color: theme.colors.outline, marginTop: 2 }}
+                      >
+                        {selectedCustomer.phone}
+                      </Text>
+                    )}
+                  </View>
+                </View>
+                <ChevronDown
+                  size={20}
+                  color={
+                    selectedCustomer
+                      ? theme.colors.primary
+                      : theme.colors.outline
+                  }
+                />
+              </TouchableOpacity>
+
+              <View style={{ height: 14 }} />
+
+              <AppInput
+                label="اسم المنتج / البضاعة *"
+                icon="shopping-bag"
+                value={productName}
+                onChangeText={setProductName}
+              />
+              <View style={{ height: 12 }} />
+              <AppInput
+                label="المبلغ الكلي (بالدينار العراقي) *"
+                icon="dollar-sign"
+                value={totalAmount}
+                onChangeText={setTotalAmount}
+                keyboardType="numeric"
+              />
+              <View style={{ height: 12 }} />
+              <AppInput
+                label="الدفعة المقدمة (اختياري)"
+                icon="dollar-sign"
+                value={downPayment}
+                onChangeText={setDownPayment}
                 keyboardType="numeric"
               />
               <View style={{ height: 12 }} />
@@ -895,7 +1200,7 @@ export default function DebtsScreen() {
               />
 
               <View style={{ height: 24 }} />
-              <AppButton label="حفظ الدين" onPress={handleAddDebt} />
+              <AppButton label="حفظ خطة التقسيط" onPress={handleAddInstallment} />
             </ScrollView>
           </View>
         </KeyboardAvoidingView>
@@ -1218,6 +1523,61 @@ export default function DebtsScreen() {
                   keyboardType="numeric"
                 />
 
+                <View style={{ height: 12 }} />
+                <Text
+                  variant="labelSmall"
+                  style={{
+                    color: theme.colors.outline,
+                    marginBottom: 6,
+                    fontFamily: "Cairo_600SemiBold",
+                  }}
+                >
+                  طريقة الدفع *
+                </Text>
+                <View style={{ flexDirection: "row", gap: 6, marginBottom: 12 }}>
+                  <Chip
+                    selected={paymentMethod === "cash"}
+                    onPress={() => setPaymentMethod("cash")}
+                    style={
+                      paymentMethod === "cash"
+                        ? { backgroundColor: theme.colors.primaryContainer }
+                        : {}
+                    }
+                  >
+                    💵 نقداً (كاش)
+                  </Chip>
+                  <Chip
+                    selected={paymentMethod === "transfer"}
+                    onPress={() => setPaymentMethod("transfer")}
+                    style={
+                      paymentMethod === "transfer"
+                        ? { backgroundColor: theme.colors.primaryContainer }
+                        : {}
+                    }
+                  >
+                    💳 زين كاش
+                  </Chip>
+                  <Chip
+                    selected={paymentMethod === "other"}
+                    onPress={() => setPaymentMethod("other")}
+                    style={
+                      paymentMethod === "other"
+                        ? { backgroundColor: theme.colors.primaryContainer }
+                        : {}
+                    }
+                  >
+                    📝 أخرى
+                  </Chip>
+                </View>
+
+                <AppInput
+                  label="ملاحظات التسديد (اختياري)"
+                  icon="file-text"
+                  value={paymentNotes}
+                  onChangeText={setPaymentNotes}
+                  placeholder="مثال: قسط شهر آب / تسديد جزئي"
+                />
+
                 {formError ? (
                   <Text
                     style={{
@@ -1241,7 +1601,503 @@ export default function DebtsScreen() {
           </View>
         </KeyboardAvoidingView>
       </Modal>
+
+      {/* Modal - سجل التسديدات التفصيلي والتاريخ والوقت */}
+      <DebtPaymentHistoryModal
+        visible={historyModalVisible}
+        debt={selectedDebtForHistory}
+        onClose={() => setHistoryModalVisible(false)}
+        onRecordPaymentSuccess={() => {
+          refetch();
+        }}
+      />
     </View>
+  );
+}
+
+function DebtPaymentHistoryModal({
+  visible,
+  debt,
+  onClose,
+  onRecordPaymentSuccess,
+}: {
+  visible: boolean;
+  debt: any;
+  onClose: () => void;
+  onRecordPaymentSuccess?: () => void;
+}) {
+  const theme = useTheme();
+  const user = useAppStore((s) => s.user);
+  const { data: payments = [], refetch: refetchPayments } = useDebtPayments(debt?.id);
+  const { data: items = [], refetch: refetchItems } = useDebtItems(debt?.id);
+  const payMutation = usePayDebt();
+
+  const [amount, setAmount] = useState("");
+  const [method, setMethod] = useState<"cash" | "transfer" | "other">("cash");
+  const [notes, setNotes] = useState("");
+  const [error, setError] = useState("");
+  const [showAddForm, setShowAddForm] = useState(false);
+
+  if (!debt) return null;
+
+  const totalAmount = debt.total_amount || 0;
+  const paidAmount = debt.paid_amount || 0;
+  const remaining =
+    debt.remaining_amount !== undefined
+      ? debt.remaining_amount
+      : Math.max(0, totalAmount - paidAmount);
+  const isPaid = remaining <= 0;
+
+  const handlePay = async () => {
+    if (!user?.id) return;
+    const cleanAmount = parseFloat(amount.replace(/,/g, ""));
+    if (isNaN(cleanAmount) || cleanAmount <= 0) {
+      setError("يرجى إدخال مبلغ تسديد صحيح");
+      return;
+    }
+
+    try {
+      setError("");
+      await payMutation.mutateAsync({
+        debtId: debt.id,
+        amount: cleanAmount,
+        storeId: user.id,
+        paymentMethod: method,
+        notes: notes.trim() || undefined,
+      });
+
+      setAmount("");
+      setNotes("");
+      setShowAddForm(false);
+      refetchPayments();
+      refetchItems();
+      if (onRecordPaymentSuccess) onRecordPaymentSuccess();
+    } catch (err: any) {
+      setError(err.message || "فشل تسديد الدفعة");
+    }
+  };
+
+  const handleShareReceipt = (payment: any) => {
+    const phone = debt.customerPhone ? debt.customerPhone.replace(/[^0-9]/g, '') : '';
+    const dateStr = formatDateTime(payment.created_at || payment.payment_date);
+    const methodStr =
+      payment.payment_method === 'transfer'
+        ? 'تحويل بنكي / زين كاش'
+        : payment.payment_method === 'other'
+          ? 'طريقة أخرى'
+          : 'نقداً (كاش)';
+
+    const typeStr = payment.type === 'down_payment' ? 'دفعة مقدمة' : 'تسديد قسط/دين';
+    const noteStr = payment.notes ? `\nالملاحظة: ${payment.notes}` : '';
+
+    const text = `إيصال تسديد رسمي 🧾
+المحل: ديون وأقساط الرافدين
+العميل: ${debt.customerName || 'المحترم'}
+المنتج/الدين: ${debt.title || ''}
+----------------------------------
+نوع العملية: ${typeStr}
+المبلغ المسدد: ${formatCurrency(payment.amount)}
+طريقة الدفع: ${methodStr}${noteStr}
+التاريخ والوقت: ${dateStr}
+----------------------------------
+إجمالي الدين: ${formatCurrency(totalAmount)}
+إجمالي المسدد: ${formatCurrency(paidAmount)}
+المتبقي الكلي: ${formatCurrency(Math.max(0, remaining))}
+----------------------------------
+شكراً لالتزامكم بالسداد! 🙏`;
+
+    const url = phone ? `https://wa.me/${phone}?text=${encodeURIComponent(text)}` : `https://wa.me/?text=${encodeURIComponent(text)}`;
+    Linking.openURL(url);
+  };
+
+  const history = [
+    ...payments.map((p: any) => ({ ...p, _type: 'payment' })),
+    ...items.map((i: any) => ({ ...i, _type: 'item' }))
+  ].sort((a, b) => new Date(b.created_at || b.item_date || b.payment_date).getTime() - new Date(a.created_at || a.item_date || a.payment_date).getTime());
+
+  return (
+    <Modal
+      visible={visible}
+      animationType="slide"
+      transparent
+      onRequestClose={onClose}
+    >
+      <View style={styles.modalOverlay}>
+        <View
+          style={[
+            styles.custPickerSheet,
+            { backgroundColor: theme.colors.surface, height: '88%', maxHeight: '90%' },
+          ]}
+        >
+          {/* Header */}
+          <View style={styles.modalHeader}>
+            <View style={styles.modalTitleRow}>
+              <Receipt size={22} color={theme.colors.primary} />
+              <View style={{ flex: 1, paddingRight: 8 }}>
+                <Text
+                  variant="titleMedium"
+                  style={[styles.modalTitle, { color: theme.colors.onSurface }]}
+                >
+                  سجل التسديدات والتفاصيل
+                </Text>
+                <Text variant="bodySmall" style={{ color: theme.colors.outline, marginTop: 2 }}>
+                  {debt.customerName} • {debt.title}
+                </Text>
+              </View>
+            </View>
+            <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
+              <X size={20} color={theme.colors.outline} />
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={{ padding: 16, paddingBottom: 28 }}
+          >
+            {/* Summary Card */}
+            <View
+              style={[
+                styles.summaryCard,
+                {
+                  backgroundColor: theme.dark ? "#1E1B4B" : "#EEF2FF",
+                  borderColor: theme.colors.primary,
+                  marginBottom: 16,
+                  padding: 16,
+                },
+              ]}
+            >
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 }}>
+                <View style={{ alignItems: 'center', flex: 1 }}>
+                  <Text variant="labelSmall" style={{ color: theme.colors.outline }}>إجمالي الدين</Text>
+                  <Text variant="titleSmall" style={{ color: theme.colors.onSurface, fontFamily: 'Cairo_700Bold', marginTop: 2 }}>
+                    {formatCurrency(totalAmount)}
+                  </Text>
+                </View>
+
+                <View style={{ width: 1, height: 28, backgroundColor: 'rgba(148, 163, 184, 0.3)' }} />
+
+                <View style={{ alignItems: 'center', flex: 1 }}>
+                  <Text variant="labelSmall" style={{ color: theme.colors.outline }}>المسدد</Text>
+                  <Text variant="titleSmall" style={{ color: '#16A34A', fontFamily: 'Cairo_700Bold', marginTop: 2 }}>
+                    {formatCurrency(paidAmount)}
+                  </Text>
+                </View>
+
+                <View style={{ width: 1, height: 28, backgroundColor: 'rgba(148, 163, 184, 0.3)' }} />
+
+                <View style={{ alignItems: 'center', flex: 1 }}>
+                  <Text variant="labelSmall" style={{ color: theme.colors.outline }}>المتبقي</Text>
+                  <Text variant="titleSmall" style={{ color: isPaid ? '#16A34A' : theme.colors.error, fontFamily: 'Cairo_700Bold', marginTop: 2 }}>
+                    {formatCurrency(Math.max(0, remaining))}
+                  </Text>
+                </View>
+              </View>
+            </View>
+
+            {/* Quick Action to Add Payment */}
+            {!isPaid && (
+              <View style={{ marginBottom: 16 }}>
+                {!showAddForm ? (
+                  <TouchableOpacity
+                    activeOpacity={0.8}
+                    onPress={() => setShowAddForm(true)}
+                    style={[
+                      styles.quickAddBtn,
+                      { backgroundColor: theme.colors.primaryContainer, justifyContent: 'center' },
+                    ]}
+                  >
+                    <Plus size={18} color={theme.colors.primary} />
+                    <Text
+                      variant="labelLarge"
+                      style={{
+                        color: theme.colors.primary,
+                        fontFamily: "Cairo_700Bold",
+                        marginRight: 6,
+                      }}
+                    >
+                      + تسجيل تسديد جديد على هذا الدين
+                    </Text>
+                  </TouchableOpacity>
+                ) : (
+                  <View
+                    style={{
+                      padding: 16,
+                      borderRadius: 18,
+                      borderWidth: 1.5,
+                      borderColor: theme.colors.primary,
+                      backgroundColor: theme.dark ? "#111726" : "#F8FAFC",
+                    }}
+                  >
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                      <Text variant="titleSmall" style={{ color: theme.colors.primary, fontFamily: 'Cairo_700Bold' }}>
+                        تسجيل تسديد جديد
+                      </Text>
+                      <TouchableOpacity onPress={() => setShowAddForm(false)}>
+                        <X size={18} color={theme.colors.outline} />
+                      </TouchableOpacity>
+                    </View>
+
+                    {error ? (
+                      <View style={{ padding: 8, borderRadius: 8, backgroundColor: theme.colors.errorContainer, marginBottom: 10 }}>
+                        <Text style={{ color: theme.colors.onErrorContainer, fontSize: 12, fontFamily: 'Cairo_600SemiBold' }}>
+                          {error}
+                        </Text>
+                      </View>
+                    ) : null}
+
+                    <AppInput
+                      label="المبلغ المسدد (د.ع) *"
+                      icon="dollar-sign"
+                      value={amount}
+                      onChangeText={setAmount}
+                      keyboardType="numeric"
+                    />
+
+                    <View style={{ height: 10 }} />
+
+                    {/* Payment Method Selector */}
+                    <Text variant="labelSmall" style={{ color: theme.colors.outline, marginBottom: 6, fontFamily: 'Cairo_600SemiBold' }}>
+                      طريقة الدفع *
+                    </Text>
+                    <View style={{ flexDirection: 'row', gap: 6, marginBottom: 12 }}>
+                      <Chip
+                        selected={method === 'cash'}
+                        onPress={() => setMethod('cash')}
+                        style={method === 'cash' ? { backgroundColor: theme.colors.primaryContainer } : {}}
+                      >
+                        💵 نقداً (كاش)
+                      </Chip>
+                      <Chip
+                        selected={method === 'transfer'}
+                        onPress={() => setMethod('transfer')}
+                        style={method === 'transfer' ? { backgroundColor: theme.colors.primaryContainer } : {}}
+                      >
+                        💳 زين كاش
+                      </Chip>
+                      <Chip
+                        selected={method === 'other'}
+                        onPress={() => setMethod('other')}
+                        style={method === 'other' ? { backgroundColor: theme.colors.primaryContainer } : {}}
+                      >
+                        📝 أخرى
+                      </Chip>
+                    </View>
+
+                    <AppInput
+                      label="ملاحظات التسديد (اختياري)"
+                      icon="file-text"
+                      value={notes}
+                      onChangeText={setNotes}
+                      placeholder="مثال: قسط شهر آب / تسديد جزئي"
+                    />
+
+                    <View style={{ height: 16 }} />
+
+                    <AppButton
+                      label="تأكيد وحفظ التسديد"
+                      onPress={handlePay}
+                      loading={payMutation.isPending}
+                    />
+                  </View>
+                )}
+              </View>
+            )}
+
+            {/* Payment History Timeline */}
+            <Text
+              variant="titleSmall"
+              style={{
+                color: theme.colors.onSurface,
+                fontFamily: "Cairo_700Bold",
+                marginBottom: 12,
+              }}
+            >
+              📋 سجل جميع العمليات والتسديدات ({history.length})
+            </Text>
+
+            {history.length === 0 ? (
+              <View style={{ padding: 24, alignItems: 'center' }}>
+                <Clock size={32} color={theme.colors.outline} />
+                <Text variant="bodySmall" style={{ color: theme.colors.outline, marginTop: 8 }}>
+                  لم يتم تسجيل أي عمليات بعد لهذا الدين.
+                </Text>
+              </View>
+            ) : (
+              history.map((record: any) => {
+                if (record._type === 'item') {
+                  return (
+                    <View
+                      key={`item-${record.id}`}
+                      style={{
+                        padding: 14,
+                        borderRadius: 16,
+                        borderWidth: 1,
+                        borderColor: theme.colors.outlineVariant,
+                        backgroundColor: theme.colors.surface,
+                        marginBottom: 10,
+                      }}
+                    >
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                          <View
+                            style={{
+                              width: 36,
+                              height: 36,
+                              borderRadius: 10,
+                              backgroundColor: '#FEE2E2',
+                              justifyContent: 'center',
+                              alignItems: 'center',
+                            }}
+                          >
+                            <DollarSign size={18} color="#DC2626" />
+                          </View>
+                          <View>
+                            <Text variant="titleSmall" style={{ color: '#DC2626', fontFamily: 'Cairo_700Bold' }}>
+                              - {formatCurrency(record.amount)}
+                            </Text>
+                            <Text variant="labelSmall" style={{ color: theme.colors.outline }}>
+                              إضافة دين (عنصر جديد)
+                            </Text>
+                          </View>
+                        </View>
+                      </View>
+
+                      {/* Date & Time details */}
+                      <View
+                        style={{
+                          marginTop: 10,
+                          paddingTop: 8,
+                          borderTopWidth: 1,
+                          borderTopColor: theme.colors.outlineVariant,
+                          flexDirection: 'row',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                        }}
+                      >
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                          <Clock size={13} color={theme.colors.outline} />
+                          <Text style={{ color: theme.colors.outline, fontSize: 11, fontFamily: 'Cairo_400Regular' }}>
+                            {formatDateTime(record.created_at || record.item_date)}
+                          </Text>
+                        </View>
+                      </View>
+
+                      {record.description ? (
+                        <View style={{ marginTop: 6, backgroundColor: theme.dark ? '#1E293B' : '#F1F5F9', padding: 8, borderRadius: 8 }}>
+                          <Text style={{ color: theme.colors.onSurface, fontSize: 12, fontFamily: 'Cairo_400Regular' }}>
+                            📝 الوصف: {record.description}
+                          </Text>
+                        </View>
+                      ) : null}
+                    </View>
+                  );
+                }
+
+                const p = record;
+                const methodLabel =
+                  p.payment_method === 'transfer'
+                    ? '💳 زين كاش / تحويل'
+                    : p.payment_method === 'other'
+                      ? '📝 طريقة أخرى'
+                      : '💵 نقداً (كاش)';
+
+                const isDownPayment = p.type === 'down_payment';
+
+                return (
+                  <View
+                    key={p.id}
+                    style={{
+                      padding: 14,
+                      borderRadius: 16,
+                      borderWidth: 1,
+                      borderColor: theme.colors.outlineVariant,
+                      backgroundColor: theme.colors.surface,
+                      marginBottom: 10,
+                    }}
+                  >
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                        <View
+                          style={{
+                            width: 36,
+                            height: 36,
+                            borderRadius: 10,
+                            backgroundColor: isDownPayment ? '#FEF3C7' : '#DCFCE7',
+                            justifyContent: 'center',
+                            alignItems: 'center',
+                          }}
+                        >
+                          <CheckCircle size={18} color={isDownPayment ? '#D97706' : '#16A34A'} />
+                        </View>
+                        <View>
+                          <Text variant="titleSmall" style={{ color: '#16A34A', fontFamily: 'Cairo_700Bold' }}>
+                            + {formatCurrency(p.amount)}
+                          </Text>
+                          <Text variant="labelSmall" style={{ color: theme.colors.outline }}>
+                            {isDownPayment ? 'دفعة مقدمة عند التفعيل' : 'تسديد دفعة / قسط'}
+                          </Text>
+                        </View>
+                      </View>
+
+                      <TouchableOpacity
+                        activeOpacity={0.7}
+                        onPress={() => handleShareReceipt(p)}
+                        style={{
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          gap: 4,
+                          paddingHorizontal: 10,
+                          paddingVertical: 6,
+                          borderRadius: 10,
+                          backgroundColor: '#DCFCE7',
+                        }}
+                      >
+                        <MessageCircle size={14} color="#16A34A" />
+                        <Text style={{ color: '#16A34A', fontFamily: 'Cairo_700Bold', fontSize: 11 }}>
+                          إيصال 💬
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+
+                    {/* Date & Time details */}
+                    <View
+                      style={{
+                        marginTop: 10,
+                        paddingTop: 8,
+                        borderTopWidth: 1,
+                        borderTopColor: theme.colors.outlineVariant,
+                        flexDirection: 'row',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                      }}
+                    >
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                        <Clock size={13} color={theme.colors.outline} />
+                        <Text style={{ color: theme.colors.outline, fontSize: 11, fontFamily: 'Cairo_400Regular' }}>
+                          {formatDateTime(p.created_at || p.payment_date)}
+                        </Text>
+                      </View>
+
+                      <Text style={{ color: theme.colors.onSurfaceVariant, fontSize: 11, fontFamily: 'Cairo_600SemiBold' }}>
+                        {methodLabel}
+                      </Text>
+                    </View>
+
+                    {p.notes ? (
+                      <View style={{ marginTop: 6, backgroundColor: theme.dark ? '#1E293B' : '#F1F5F9', padding: 8, borderRadius: 8 }}>
+                        <Text style={{ color: theme.colors.onSurface, fontSize: 12, fontFamily: 'Cairo_400Regular' }}>
+                          📝 الملاحظة: {p.notes}
+                        </Text>
+                      </View>
+                    ) : null}
+                  </View>
+                );
+              })
+            )}
+          </ScrollView>
+        </View>
+      </View>
+    </Modal>
   );
 }
 
@@ -1352,6 +2208,14 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
   },
   installmentInfo: { flexDirection: "row", alignItems: "center", flex: 1 },
+  historyButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 14,
+  },
   payButton: {
     flexDirection: "row",
     alignItems: "center",

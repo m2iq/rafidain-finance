@@ -3,14 +3,11 @@
 import {
   Sidebar,
   SidebarContent,
-  SidebarGroup,
-  SidebarGroupContent,
-  SidebarGroupLabel,
+  SidebarFooter,
   SidebarHeader,
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
-  SidebarFooter,
 } from '@/components/ui/sidebar';
 import {
   LayoutDashboard,
@@ -22,136 +19,186 @@ import {
   ShieldCheck,
   LogOut,
   SlidersHorizontal,
-  Zap,
-  ChevronRight,
+  KeyRound,
+  BarChart3,
+  Smartphone,
+  ChevronLeft,
+  MessageSquare,
 } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useAuth } from '@/components/providers/AuthProvider';
 
-const mainNavItems = [
-  { title: 'الرئيسية', url: '/', icon: LayoutDashboard },
-  { title: 'المستخدمون', url: '/users', icon: Users },
-  { title: 'الاشتراكات', url: '/subscriptions', icon: CreditCard },
-  { title: 'خطط الأسعار', url: '/subscription-plans', icon: SlidersHorizontal },
-];
+// ─── Nav config ──────────────────────────────────────────────────
+const MAIN_ITEMS = [
+  { label: 'الرئيسية', href: '/', icon: LayoutDashboard },
+  { label: 'المستخدمون', href: '/users', icon: Users },
+  { label: 'الاشتراكات', href: '/subscriptions', icon: CreditCard },
+  { label: 'خطط الأسعار', href: '/subscription-plans', icon: SlidersHorizontal },
+  { label: 'التقارير', href: '/reports', icon: BarChart3 },
+] as const;
 
-const toolsNavItems = [
-  { title: 'أكواد التفعيل', url: '/vouchers', icon: Ticket },
-  { title: 'إرسال إشعار', url: '/notifications', icon: Bell },
-  { title: 'سجل الإدارة', url: '/audit-logs', icon: ShieldCheck },
-];
+const TOOLS_ITEMS = [
+  { label: 'رسائل الدعم', href: '/support', icon: MessageSquare },
+  { label: 'إدارة التحديثات', href: '/updates', icon: Smartphone },
+  { label: 'طلبات كلمة المرور', href: '/password-resets', icon: KeyRound },
+  { label: 'أكواد التفعيل', href: '/vouchers', icon: Ticket },
+  { label: 'الإشعارات', href: '/notifications', icon: Bell },
+  { label: 'سجل الإدارة', href: '/audit-logs', icon: ShieldCheck },
+] as const;
 
-const settingsNavItems = [
-  { title: 'إعدادات النظام', url: '/settings', icon: Settings },
-];
+const SETTINGS_ITEMS = [
+  { label: 'إعدادات النظام', href: '/settings', icon: Settings },
+] as const;
 
-function NavSection({
-  label,
-  items,
-  pathname,
-}: {
-  label: string;
-  items: typeof mainNavItems;
-  pathname: string;
-}) {
+// ─── Section label ────────────────────────────────────────────────
+function SectionLabel({ children }: { children: string }) {
   return (
-    <SidebarGroup className="mb-1">
-      <SidebarGroupLabel className="text-[10px] font-bold uppercase tracking-widest px-3 mb-1 text-sidebar-foreground/40">
-        {label}
-      </SidebarGroupLabel>
-      <SidebarGroupContent>
-        <SidebarMenu>
-          {items.map((item) => {
-            const isActive =
-              pathname === item.url ||
-              (item.url !== '/' && pathname.startsWith(item.url));
-            return (
-              <SidebarMenuItem key={item.title}>
-                <SidebarMenuButton
-                  render={<Link href={item.url} />}
-                  isActive={isActive}
-                  className={`
-                    py-2.5 px-3 rounded-xl transition-all duration-150 flex items-center gap-3 group
-                    ${isActive
-                      ? 'bg-gradient-to-l from-indigo-600/20 to-violet-600/10 text-indigo-400 dark:text-indigo-300 font-semibold shadow-sm'
-                      : 'hover:bg-sidebar-accent text-sidebar-foreground/70 hover:text-sidebar-foreground'
-                    }
-                  `}
-                >
-                  <div className={`
-                    w-7 h-7 rounded-lg flex items-center justify-center transition-all
-                    ${isActive
-                      ? 'bg-gradient-to-br from-indigo-500 to-violet-600 text-white shadow-md shadow-indigo-500/25'
-                      : 'bg-sidebar-accent text-sidebar-foreground/50 group-hover:text-sidebar-foreground'
-                    }
-                  `}>
-                    <item.icon className="h-3.5 w-3.5" />
-                  </div>
-                  <span className="font-medium text-sm flex-1">{item.title}</span>
-                  {isActive && (
-                    <ChevronRight className="h-3 w-3 opacity-60" />
-                  )}
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            );
-          })}
-        </SidebarMenu>
-      </SidebarGroupContent>
-    </SidebarGroup>
+    <p className="mb-1 mt-4 px-3 text-[10px] font-bold uppercase tracking-[0.12em] text-sidebar-foreground/35 first:mt-0 select-none">
+      {children}
+    </p>
   );
 }
 
+// ─── Nav item ─────────────────────────────────────────────────────
+function NavItem({
+  href,
+  icon: Icon,
+  label,
+  active,
+}: {
+  href: string;
+  icon: React.ElementType;
+  label: string;
+  active: boolean;
+}) {
+  return (
+    <SidebarMenuItem>
+      <SidebarMenuButton
+        render={<Link href={href} />}
+        isActive={active}
+        className={`
+          group flex h-9 items-center gap-3 rounded-xl px-3 py-0 text-sm font-medium
+          transition-all duration-150 select-none
+          ${
+            active
+              ? 'bg-primary/10 text-primary dark:bg-primary/15 shadow-sm font-semibold'
+              : 'text-sidebar-foreground/65 hover:bg-sidebar-accent/70 hover:text-sidebar-foreground'
+          }
+        `}
+      >
+        <span
+          className={`
+            flex h-7 w-7 shrink-0 items-center justify-center rounded-lg transition-all
+            ${
+              active
+                ? 'bg-primary text-white shadow-md shadow-primary/30'
+                : 'bg-sidebar-accent/60 text-sidebar-foreground/45 group-hover:text-sidebar-foreground group-hover:bg-sidebar-accent'
+            }
+          `}
+        >
+          <Icon className="h-[15px] w-[15px]" />
+        </span>
+        <span className="flex-1 leading-tight">{label}</span>
+        {active && (
+          <ChevronLeft className="h-3 w-3 opacity-40 rotate-180" />
+        )}
+      </SidebarMenuButton>
+    </SidebarMenuItem>
+  );
+}
+
+// ─── Main sidebar ─────────────────────────────────────────────────
 export function AppSidebar() {
   const pathname = usePathname();
   const { adminProfile, logout } = useAuth();
 
-  const initials = adminProfile?.name
-    ? adminProfile.name.charAt(0)
-    : 'م';
+  const isActive = (href: string) =>
+    href === '/' ? pathname === '/' : pathname.startsWith(href);
+
+  const initial = (adminProfile?.name ?? 'م').charAt(0);
+  const roleBadge =
+    adminProfile?.role === 'super_admin' ? 'رئيسي' : 'مشرف';
 
   return (
-    <Sidebar side="right" className="border-l-0">
-      {/* Logo Header */}
-      <SidebarHeader className="px-4 py-4 border-b border-sidebar-border">
+    <Sidebar side="right" className="border-l border-sidebar-border/50">
+      {/* ─── Brand header ─────────────────────────────────────────── */}
+      <SidebarHeader className="px-4 pb-4 pt-5">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center text-white shadow-lg shadow-indigo-500/25 shrink-0">
-            <Zap size={18} strokeWidth={2.5} />
-          </div>
-          <div className="min-w-0">
-            <h2 className="font-bold text-sm leading-tight truncate">ديون واقساط الرافدين</h2>
-            <div className="flex items-center gap-1.5 mt-0.5">
-              <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-              <p className="text-[11px] text-muted-foreground">متصل بالخوادم</p>
+          {/* Logo mark */}
+          <div className="relative shrink-0">
+            <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center shadow-lg shadow-indigo-500/25">
+              <ShieldCheck size={19} className="text-white" strokeWidth={2.2} />
             </div>
+            {/* Online dot */}
+            <span className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-sidebar bg-emerald-400 shadow-sm" />
+          </div>
+
+          <div className="min-w-0">
+            <h2 className="truncate text-sm font-bold leading-tight text-sidebar-foreground">
+              رافدين فاينانس
+            </h2>
+            <p className="mt-0.5 text-[11px] text-sidebar-foreground/45 font-medium">
+              لوحة الإدارة المتكاملة
+            </p>
           </div>
         </div>
+
+        {/* Divider */}
+        <div className="mt-4 h-px bg-sidebar-border/60" />
       </SidebarHeader>
 
-      {/* Navigation */}
-      <SidebarContent className="px-2 py-3">
-        <NavSection label="القائمة الرئيسية" items={mainNavItems} pathname={pathname} />
-        <NavSection label="الأدوات" items={toolsNavItems} pathname={pathname} />
-        <NavSection label="الإعدادات" items={settingsNavItems} pathname={pathname} />
+      {/* ─── Navigation ───────────────────────────────────────────── */}
+      <SidebarContent className="px-2 pb-2">
+        <SectionLabel>القائمة الرئيسية</SectionLabel>
+        <SidebarMenu className="gap-0.5">
+          {MAIN_ITEMS.map((item) => (
+            <NavItem key={item.href} {...item} label={item.label} active={isActive(item.href)} />
+          ))}
+        </SidebarMenu>
+
+        <SectionLabel>الأدوات</SectionLabel>
+        <SidebarMenu className="gap-0.5">
+          {TOOLS_ITEMS.map((item) => (
+            <NavItem key={item.href} {...item} label={item.label} active={isActive(item.href)} />
+          ))}
+        </SidebarMenu>
+
+        <SectionLabel>الإعدادات</SectionLabel>
+        <SidebarMenu className="gap-0.5">
+          {SETTINGS_ITEMS.map((item) => (
+            <NavItem key={item.href} {...item} label={item.label} active={isActive(item.href)} />
+          ))}
+        </SidebarMenu>
       </SidebarContent>
 
-      {/* Footer - User Info */}
-      <SidebarFooter className="p-3 border-t border-sidebar-border">
-        <div className="flex items-center gap-3 p-2.5 rounded-xl bg-sidebar-accent/60 mb-2">
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center text-white font-bold text-sm shrink-0">
-            {initials}
+      {/* ─── Footer / User card ───────────────────────────────────── */}
+      <SidebarFooter className="p-3 border-t border-sidebar-border/60">
+        {/* User info */}
+        <div className="flex items-center gap-3 rounded-xl bg-sidebar-accent/40 px-3 py-2.5 mb-2">
+          {/* Avatar */}
+          <div className="h-9 w-9 shrink-0 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center text-white font-bold text-sm shadow-md shadow-indigo-500/20">
+            {initial}
           </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold truncate">{adminProfile?.name || 'مدير النظام'}</p>
-            <p className="text-[11px] text-muted-foreground truncate">{adminProfile?.email || ''}</p>
+
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-semibold text-sidebar-foreground leading-tight">
+              {adminProfile?.name ?? 'مدير النظام'}
+            </p>
+            <p className="truncate text-[11px] text-sidebar-foreground/45 mt-0.5">
+              {adminProfile?.email ?? ''}
+            </p>
           </div>
-          <span className="text-[10px] bg-indigo-500/15 text-indigo-500 dark:text-indigo-300 font-bold px-2 py-0.5 rounded-full shrink-0 border border-indigo-500/20">
-            {adminProfile?.role === 'super_admin' ? 'رئيسي' : 'أدمن'}
+
+          <span className="shrink-0 rounded-full border border-indigo-500/25 bg-indigo-500/10 px-2 py-0.5 text-[10px] font-bold text-indigo-500 dark:text-indigo-300 leading-tight">
+            {roleBadge}
           </span>
         </div>
+
+        {/* Logout */}
         <button
           onClick={logout}
-          className="w-full flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-sm font-medium text-red-500 dark:text-red-400 hover:bg-red-500/10 border border-transparent hover:border-red-500/20 transition-all duration-150"
+          className="flex w-full items-center justify-center gap-2 rounded-xl border border-transparent py-2 px-3 text-[13px] font-semibold text-rose-500 dark:text-rose-400 transition-all duration-150 hover:border-rose-500/20 hover:bg-rose-500/8"
         >
           <LogOut className="h-4 w-4" />
           تسجيل الخروج

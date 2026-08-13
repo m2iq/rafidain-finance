@@ -41,6 +41,26 @@ export const BrandColors = {
   cyanLight:      '#CFFAFE',
 };
 
+// ── Spacing & Radius Scale ────────────────────────
+// Consolidates the ad-hoc 12/14/16/18/20/24/28px paddings/radii used
+// throughout the app into a single named scale.
+export const Spacing = {
+  xs: 4,
+  sm: 8,
+  md: 12,
+  lg: 16,
+  xl: 20,
+  xxl: 24,
+};
+
+export const Radius = {
+  sm: 12,
+  md: 16,
+  lg: 20,
+  xl: 24,
+  pill: 999,
+};
+
 // ── Light Theme ──────────────────────────────────
 export const lightTheme = {
   ...MD3LightTheme,

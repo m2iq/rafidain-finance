@@ -1,7 +1,7 @@
 {
   "name": "rafidainfinance",
   "main": "expo-router/entry",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "dependencies": {
     "@expo-google-fonts/cairo": "^0.4.2",
     "@expo/vector-icons": "^15.0.2",
@@ -13,8 +13,10 @@
     "expo-constants": "~57.0.7",
     "expo-crypto": "~57.0.1",
     "expo-device": "~57.0.1",
+    "expo-file-system": "~57.0.2",
     "expo-font": "~57.0.1",
     "expo-image": "~57.0.2",
+    "expo-intent-launcher": "~57.0.1",
     "expo-linking": "~57.0.5",
     "expo-local-authentication": "~57.0.2",
     "expo-notifications": "~57.0.10",
@@ -45,6 +47,8 @@
   },
   "devDependencies": {
     "@types/react": "~19.2.2",
+    "eslint": "^9.0.0",
+    "eslint-config-expo": "~57.0.1",
     "typescript": "~6.0.3"
   },
   "scripts": {

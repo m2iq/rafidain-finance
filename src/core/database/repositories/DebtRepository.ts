@@ -19,11 +19,41 @@ export interface Debt {
   updated_at: string;
   deleted_at: string | null;
   version: number;
+  type: 'debt' | 'installment';
 }
 
 export interface DebtWithCustomer extends Debt {
   customerName: string;
   customerPhone: string | null;
+}
+
+export interface PaymentRecord {
+  id: string;
+  debt_id: string;
+  installment_id: string | null;
+  customer_id: string;
+  store_id: string;
+  amount: number;
+  payment_date: string;
+  type: string;
+  payment_method: string;
+  date: string;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DebtItem {
+  id: string;
+  debt_id: string;
+  store_id: string;
+  description: string;
+  amount: number;
+  item_date: string;
+  created_at: string;
+  updated_at: string;
+  deleted_at: string | null;
+  version: number;
 }
 
 export class DebtRepository {
@@ -79,6 +109,20 @@ export class DebtRepository {
     ) as DebtWithCustomer | null;
   }
 
+  static getPaymentsForDebt(debtId: string): PaymentRecord[] {
+    return db.getAllSync(
+      `SELECT * FROM payments WHERE debt_id = ? AND deleted_at IS NULL ORDER BY created_at DESC`,
+      [debtId]
+    ) as PaymentRecord[];
+  }
+
+  static getDebtItems(debtId: string): DebtItem[] {
+    return db.getAllSync(
+      `SELECT * FROM debt_items WHERE debt_id = ? AND deleted_at IS NULL ORDER BY created_at DESC`,
+      [debtId]
+    ) as DebtItem[];
+  }
+
   static create(debt: {
     customer_id: string;
     store_id: string;
@@ -88,6 +132,7 @@ export class DebtRepository {
     paid_amount?: number;
     due_date?: string | null;
     status?: 'active' | 'partially_paid' | 'paid' | 'overdue' | 'cancelled';
+    type?: 'debt' | 'installment';
   }): DebtWithCustomer {
     const id = randomUUID();
     const now = new Date().toISOString();
@@ -97,8 +142,8 @@ export class DebtRepository {
     const initialStatus = remainingAmount === 0 ? 'paid' : (debt.status || 'active');
 
     db.runSync(
-      `INSERT INTO debts (id, customer_id, store_id, title, product_name, total_amount, paid_amount, down_payment, remaining_amount, interest_rate, due_date, status, created_at, updated_at, version) 
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, 1)`,
+      `INSERT INTO debts (id, customer_id, store_id, title, product_name, total_amount, paid_amount, down_payment, remaining_amount, interest_rate, due_date, status, type, created_at, updated_at, version) 
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, 1)`,
       [
         id,
         debt.customer_id,
@@ -111,23 +156,56 @@ export class DebtRepository {
         remainingAmount,
         debt.due_date || null,
         initialStatus,
+        debt.type || 'debt',
         now,
         now,
       ]
     );
 
-    // Sync queue entry
+    // Sync queue entry for debt
     db.runSync(
       `INSERT INTO sync_queue (id, table_name, record_id, operation, created_at) VALUES (?, ?, ?, ?, ?)`,
       [randomUUID(), 'debts', id, 'INSERT', now]
     );
+
+    // Initial debt item
+    const itemId = randomUUID();
+    db.runSync(
+      `INSERT INTO debt_items (id, debt_id, store_id, description, amount, item_date, created_at, updated_at, version)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)`,
+      [itemId, id, debt.store_id, debt.title, debt.total_amount, now.substring(0, 10), now, now]
+    );
+    db.runSync(
+      `INSERT INTO sync_queue (id, table_name, record_id, operation, created_at) VALUES (?, ?, ?, ?, ?)`,
+      [randomUUID(), 'debt_items', itemId, 'INSERT', now]
+    );
+
+    // If there is a down payment, record it as the first payment transaction
+    if (downPayment > 0) {
+      const paymentId = randomUUID();
+      db.runSync(
+        `INSERT INTO payments (id, debt_id, customer_id, store_id, amount, payment_date, type, payment_method, date, notes, created_at, updated_at, version)
+         VALUES (?, ?, ?, ?, ?, ?, 'down_payment', 'cash', ?, 'دفعة مقدمة عند إنشاء العقد', ?, ?, 1)`,
+        [paymentId, id, debt.customer_id, debt.store_id, downPayment, now.substring(0, 10), now.substring(0, 10), now, now]
+      );
+      db.runSync(
+        `INSERT INTO sync_queue (id, table_name, record_id, operation, created_at) VALUES (?, ?, ?, ?, ?)`,
+        [randomUUID(), 'payments', paymentId, 'INSERT', now]
+      );
+    }
 
     triggerBackgroundSync(debt.store_id);
 
     return this.getById(id, debt.store_id)!;
   }
 
-  static recordPayment(debtId: string, amount: number, storeId?: string): DebtWithCustomer | null {
+  static recordPayment(
+    debtId: string,
+    amount: number,
+    storeId?: string,
+    paymentMethod: string = 'cash',
+    notes?: string
+  ): DebtWithCustomer | null {
     const existing = this.getById(debtId, storeId);
     if (!existing) return null;
 
@@ -144,15 +222,59 @@ export class DebtRepository {
     // Add payment record
     const paymentId = randomUUID();
     db.runSync(
-      `INSERT INTO payments (id, debt_id, customer_id, store_id, amount, payment_date, type, payment_method, date, created_at, updated_at, version)
-       VALUES (?, ?, ?, ?, ?, ?, 'payment', 'cash', ?, ?, ?, 1)`,
-      [paymentId, debtId, existing.customer_id, existing.store_id, amount, now.substring(0, 10), now.substring(0, 10), now, now]
+      `INSERT INTO payments (id, debt_id, customer_id, store_id, amount, payment_date, type, payment_method, date, notes, created_at, updated_at, version)
+       VALUES (?, ?, ?, ?, ?, ?, 'payment', ?, ?, ?, ?, ?, 1)`,
+      [paymentId, debtId, existing.customer_id, existing.store_id, amount, now.substring(0, 10), paymentMethod, now.substring(0, 10), notes || null, now, now]
     );
 
-    // Add sync queue
+    // Add sync queue for debt update and payment insert
     db.runSync(
       `INSERT INTO sync_queue (id, table_name, record_id, operation, created_at) VALUES (?, ?, ?, ?, ?)`,
       [randomUUID(), 'debts', debtId, 'UPDATE', now]
+    );
+    db.runSync(
+      `INSERT INTO sync_queue (id, table_name, record_id, operation, created_at) VALUES (?, ?, ?, ?, ?)`,
+      [randomUUID(), 'payments', paymentId, 'INSERT', now]
+    );
+
+    triggerBackgroundSync(storeId || existing.store_id);
+
+    return this.getById(debtId, storeId);
+  }
+
+  static addDebtItem(
+    debtId: string,
+    description: string,
+    amount: number,
+    storeId: string
+  ): DebtWithCustomer | null {
+    const existing = this.getById(debtId, storeId);
+    if (!existing) return null;
+
+    const newTotalAmount = existing.total_amount + amount;
+    const newRemainingAmount = existing.remaining_amount + amount;
+    const newStatus = newRemainingAmount === 0 ? 'paid' : (existing.status === 'paid' ? 'active' : existing.status);
+    const now = new Date().toISOString();
+
+    db.runSync(
+      `UPDATE debts SET total_amount = ?, remaining_amount = ?, status = ?, updated_at = ?, version = version + 1 WHERE id = ?`,
+      [newTotalAmount, newRemainingAmount, newStatus, now, debtId]
+    );
+
+    const itemId = randomUUID();
+    db.runSync(
+      `INSERT INTO debt_items (id, debt_id, store_id, description, amount, item_date, created_at, updated_at, version)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)`,
+      [itemId, debtId, storeId, description, amount, now.substring(0, 10), now, now]
+    );
+
+    db.runSync(
+      `INSERT INTO sync_queue (id, table_name, record_id, operation, created_at) VALUES (?, ?, ?, ?, ?)`,
+      [randomUUID(), 'debts', debtId, 'UPDATE', now]
+    );
+    db.runSync(
+      `INSERT INTO sync_queue (id, table_name, record_id, operation, created_at) VALUES (?, ?, ?, ?, ?)`,
+      [randomUUID(), 'debt_items', itemId, 'INSERT', now]
     );
 
     triggerBackgroundSync(storeId);
@@ -172,3 +294,4 @@ export class DebtRepository {
     triggerBackgroundSync(storeId);
   }
 }
+

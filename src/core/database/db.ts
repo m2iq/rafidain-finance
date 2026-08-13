@@ -69,11 +69,26 @@ export const initializeDatabase = () => {
         interest_rate REAL DEFAULT 0,
         due_date TEXT,
         status TEXT DEFAULT 'active',
+        type TEXT DEFAULT 'debt',
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
         deleted_at TEXT,
         version INTEGER DEFAULT 1,
         FOREIGN KEY(customer_id) REFERENCES customers(id)
+      );
+
+      CREATE TABLE IF NOT EXISTS debt_items (
+        id TEXT PRIMARY KEY,
+        debt_id TEXT NOT NULL,
+        store_id TEXT,
+        description TEXT NOT NULL,
+        amount REAL NOT NULL,
+        item_date TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        deleted_at TEXT,
+        version INTEGER DEFAULT 1,
+        FOREIGN KEY(debt_id) REFERENCES debts(id)
       );
 
       CREATE TABLE IF NOT EXISTS installments (
@@ -121,6 +136,16 @@ export const initializeDatabase = () => {
         created_at TEXT NOT NULL,
         synced_at TEXT
       );
+
+      CREATE TABLE IF NOT EXISTS notifications (
+        id TEXT PRIMARY KEY,
+        title TEXT NOT NULL,
+        body TEXT NOT NULL,
+        type TEXT DEFAULT 'system',
+        payload TEXT,
+        is_read INTEGER DEFAULT 0,
+        created_at TEXT NOT NULL
+      );
     `);
 
     const checkAndAddColumn = (table: string, column: string, typeAndDefault: string) => {
@@ -148,6 +173,7 @@ export const initializeDatabase = () => {
       { table: 'debts', col: 'remaining_amount', def: 'REAL DEFAULT 0' },
       { table: 'debts', col: 'interest_rate', def: 'REAL DEFAULT 0' },
       { table: 'debts', col: 'due_date', def: 'TEXT' },
+      { table: 'debts', col: 'type', def: 'TEXT DEFAULT "debt"' },
       { table: 'installments', col: 'customer_id', def: 'TEXT' },
       { table: 'installments', col: 'store_id', def: 'TEXT' },
       { table: 'installments', col: 'installment_number', def: 'INTEGER DEFAULT 1' },

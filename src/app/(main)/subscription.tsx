@@ -1,5 +1,5 @@
 import { useRouter } from 'expo-router';
-import { Check, CheckCircle, Cloud, Server, ShieldCheck, Sparkles } from 'lucide-react-native';
+import { Check, CheckCircle, Cloud, KeyRound, Server, ShieldCheck, Sparkles, Ticket } from 'lucide-react-native';
 import { useEffect, useState } from 'react';
 import { Alert, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { Surface, Text, useTheme } from 'react-native-paper';
@@ -7,6 +7,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAppStore } from '../../core/store/appStore';
 import { supabase } from '../../core/supabase/supabaseClient';
 import AppButton from '../../shared/components/AppButton';
+import AppInput from '../../shared/components/AppInput';
 import AppScreen from '../../shared/components/AppScreen';
 import ar from '../../shared/i18n/ar';
 import { formatCurrency } from '../../shared/utils/currency';
@@ -19,6 +20,8 @@ export default function SubscriptionScreen() {
 
   const [billingCycle, setBillingCycle] = useState<'monthly' | 'quarterly'>('quarterly');
   const [loading, setLoading] = useState(false);
+  const [voucherCode, setVoucherCode] = useState('');
+  const [voucherError, setVoucherError] = useState('');
 
   const [subDetails, setSubDetails] = useState<{
     endDate: string | null;
@@ -43,10 +46,8 @@ export default function SubscriptionScreen() {
         .maybeSingle();
 
       if (data && data.status === 'active' && data.plan_tier !== 'free') {
-        // التحقق من تاريخ الانتهاء
         const isExpired = data.end_date && new Date(data.end_date) < new Date();
         if (isExpired) {
-          // الاشتراك منتهي — أوقف المزامنة تلقائياً
           setSubscription(false);
           setCloudMode(false);
           setSubDetails(null);
@@ -62,7 +63,6 @@ export default function SubscriptionScreen() {
           });
         }
       } else {
-        // لا يوجد اشتراك نشط — أوقف المزامنة
         setSubscription(false);
         setCloudMode(false);
         setSubDetails(null);
@@ -72,42 +72,114 @@ export default function SubscriptionScreen() {
     }
   };
 
-  const handleSubscribe = async (tier: 'cloud_monthly' | 'cloud_quarterly') => {
+  const handleRedeemVoucher = async () => {
+    setVoucherError('');
+    const cleanCode = voucherCode.trim().toUpperCase();
+
+    if (!cleanCode) {
+      setVoucherError('يرجى إدخال كود التفعيل أولاً');
+      return;
+    }
+
+    if (!user?.id) {
+      setVoucherError('يرجى تسجيل الدخول أولاً لتفعيل الكود');
+      return;
+    }
+
     setLoading(true);
     try {
-      const startDate = new Date();
-      const endDate = new Date();
-      if (tier === 'cloud_monthly') endDate.setMonth(endDate.getMonth() + 1);
-      if (tier === 'cloud_quarterly') endDate.setMonth(endDate.getMonth() + 3);
+      // 1. Fetch voucher from Supabase
+      const { data: voucher, error: fetchErr } = await supabase
+        .from('voucher_codes')
+        .select('*')
+        .eq('code', cleanCode)
+        .maybeSingle();
 
-      if (user?.id) {
-        const payload = {
-          store_id: user.id,
-          plan_tier: tier,
-          status: 'active',
-          start_date: startDate.toISOString(),
-          end_date: endDate.toISOString(),
-        };
-
-        // Try upserting to Supabase
-        const { error } = await supabase
-          .from('subscriptions')
-          .upsert(payload, { onConflict: 'store_id' });
-
-        if (error) {
-          console.log('Supabase RLS/Sync notice (handled gracefully):', error.message);
-        }
+      if (fetchErr) {
+        throw new Error('حدث خطأ أثناء فحص الكود: ' + fetchErr.message);
       }
 
-      // Always activate locally in app state
+      if (!voucher) {
+        throw new Error('كود التفعيل الذي أدخلته غير صحيح أو غير موجود');
+      }
+
+      if (voucher.status !== 'active') {
+        throw new Error('كود التفعيل غير نشط أو تم إلغاؤه');
+      }
+
+      if (voucher.current_usages >= voucher.max_usages) {
+        throw new Error('تم استنفاذ الحد الأقصى لاستخدام هذا الكود');
+      }
+
+      if (voucher.expires_at && new Date(voucher.expires_at) < new Date()) {
+        throw new Error('كود التفعيل منتهي الصلاحية');
+      }
+
+      // 2. Check if user already redeemed this voucher
+      const { data: existingRedemption } = await supabase
+        .from('voucher_redemptions')
+        .select('id')
+        .eq('voucher_id', voucher.id)
+        .eq('user_id', user.id)
+        .maybeSingle();
+
+      if (existingRedemption) {
+        throw new Error('لقد قمت باستخدام هذا الكود على حسابك سابقاً');
+      }
+
+      // 3. Update voucher usages
+      const newUsages = (voucher.current_usages || 0) + 1;
+      const newStatus = newUsages >= voucher.max_usages ? 'expired' : 'active';
+
+      await supabase
+        .from('voucher_codes')
+        .update({
+          current_usages: newUsages,
+          status: newStatus,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', voucher.id);
+
+      // 4. Log redemption
+      await supabase.from('voucher_redemptions').insert([
+        {
+          voucher_id: voucher.id,
+          user_id: user.id,
+          redeemed_at: new Date().toISOString(),
+        },
+      ]);
+
+      // 5. Calculate new subscription duration
+      const durationDays = voucher.duration_days || 30;
+      const startDate = new Date();
+      const endDate = new Date();
+      endDate.setDate(endDate.getDate() + durationDays);
+
+      const subPayload = {
+        store_id: user.id,
+        plan_tier: durationDays >= 90 ? 'cloud_quarterly' : 'cloud_monthly',
+        status: 'active',
+        start_date: startDate.toISOString(),
+        end_date: endDate.toISOString(),
+        updated_at: startDate.toISOString(),
+      };
+
+      await supabase
+        .from('subscriptions')
+        .upsert(subPayload, { onConflict: 'store_id' });
+
+      // 6. Update local app state
       setSubscription(true);
       setCloudMode(true);
-      Alert.alert('تم التفعيل', 'تم تفعيل الاشتراك السحابي بنجاح! استمتع بكافة الميزات.');
+      setVoucherCode('');
+      await checkSubscription(user.id);
+
+      Alert.alert(
+        'تم التفعيل بنجاح! 🎉',
+        `تهانينا، تم تفعيل اشتراكك السحابي بنجاح لمدة ${durationDays} يوماً!`
+      );
     } catch (err: any) {
-      // Graceful fallback to local state activation
-      setSubscription(true);
-      setCloudMode(true);
-      Alert.alert('تم التفعيل', 'تم تفعيل الاشتراك بنجاح!');
+      setVoucherError(err.message || 'فشل تفعيل الكود، يرجى المحاولة لاحقاً');
     } finally {
       setLoading(false);
     }
@@ -121,8 +193,65 @@ export default function SubscriptionScreen() {
 
         {/* Subtitle / Intro */}
         <Text variant="bodyMedium" style={[styles.subtitle, { color: theme.colors.outline }]}>
-          انقل أعمالك للمستوى التالي مع المزامنة السحابية الفورية والنسخ الاحتياطي التلقائي.
+          انقل أعمالك للمستوى التالي مع المزامنة السحابية الفورية وتفعيل الباقات من خلال كود التفعيل الصادر من الإدارة.
         </Text>
+
+        {/* VOUCHER ACTIVATION CARD */}
+        <Surface
+          style={[
+            styles.proCard,
+            {
+              backgroundColor: theme.dark ? '#191C35' : '#FFFFFF',
+              borderColor: theme.colors.primary,
+              marginBottom: 20,
+            },
+          ]}
+          elevation={2}
+        >
+          <View style={styles.planHeader}>
+            <View style={[styles.planIconWrap, { backgroundColor: theme.dark ? '#311B92' : '#F3E8FF' }]}>
+              <Ticket size={24} color="#7C3AED" />
+            </View>
+            <View style={styles.planTitleBox}>
+              <Text variant="titleMedium" style={[styles.planTitle, { color: theme.colors.onSurface }]}>
+                تفعيل الاشتراك بواسطة كود التفعيل
+              </Text>
+              <Text variant="bodySmall" style={{ color: theme.colors.outline }}>
+                أدخل كود التفعيل (Voucher Code) الصادر من الإدارة لتسجيل باقتك فوراً
+              </Text>
+            </View>
+          </View>
+
+          {voucherError ? (
+            <View style={{ padding: 10, borderRadius: 10, backgroundColor: theme.colors.errorContainer, marginTop: 12 }}>
+              <Text style={{ color: theme.colors.onErrorContainer, fontFamily: 'Cairo_600SemiBold', fontSize: 13 }}>
+                {voucherError}
+              </Text>
+            </View>
+          ) : null}
+
+          <View style={{ marginTop: 12 }}>
+            <AppInput
+              label="رمز كود التفعيل *"
+              icon="key"
+              value={voucherCode}
+              onChangeText={(txt) => {
+                setVoucherCode(txt.toUpperCase());
+                setVoucherError('');
+              }}
+              autoCapitalize="characters"
+            />
+          </View>
+
+          <View style={{ marginTop: 16 }}>
+            <AppButton
+              label="تأكيد وتفعيل الكود الآن"
+              onPress={handleRedeemVoucher}
+              loading={loading}
+              mode="contained"
+            />
+          </View>
+        </Surface>
 
         {/* Billing Cycle Toggle Switch */}
         <View style={[styles.cycleToggleContainer, { backgroundColor: theme.dark ? '#1E293B' : '#F1F5F9' }]}>
@@ -176,10 +305,10 @@ export default function SubscriptionScreen() {
             styles.proCard,
             {
               backgroundColor: theme.dark ? '#191C35' : '#FFFFFF',
-              borderColor: hasActiveSubscription ? '#10B981' : theme.colors.primary,
+              borderColor: hasActiveSubscription ? '#10B981' : theme.colors.outlineVariant,
             },
           ]}
-          elevation={3}
+          elevation={2}
         >
           {/* Top Popular Ribbon / Badge */}
           <View style={styles.topRibbonRow}>
@@ -237,16 +366,8 @@ export default function SubscriptionScreen() {
             <ProFeature text="إرفاق صور السندات والقوائم بالديون" />
           </View>
 
-          {/* Action Button */}
-          {!hasActiveSubscription ? (
-            <AppButton
-              label={isMonthly ? "الاشتراك بالباقة الشهرية (5,000 د.ع)" : "الاشتراك بعرض 3 أشهر (10,000 د.ع)"}
-              onPress={() => handleSubscribe(isMonthly ? 'cloud_monthly' : 'cloud_quarterly')}
-              loading={loading}
-              mode="contained"
-              style={styles.proSubscribeBtn}
-            />
-          ) : (
+          {/* Status info */}
+          {hasActiveSubscription && (
             <View style={[styles.currentPlanFooter, { alignItems: 'flex-start' }]}>
               <ShieldCheck size={20} color="#16A34A" style={{ marginTop: 2 }} />
               <View style={{ flex: 1, marginLeft: 8 }}>

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
@@ -10,9 +10,13 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Cloud, ShieldAlert, Save, RefreshCw } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
+import { toast } from '@/components/ui/toast';
+import { logAdminAction } from '@/lib/audit';
+import { useAuth } from '@/components/providers/AuthProvider';
 
 export default function SettingsPage() {
   const queryClient = useQueryClient();
+  const { adminProfile } = useAuth();
 
   const { data: settings, isLoading } = useQuery({
     queryKey: ['adminSystemSettings'],
@@ -32,14 +36,19 @@ export default function SettingsPage() {
   const [appName, setAppName] = useState<string>('Rafidain Finance');
   const [appVersion, setAppVersion] = useState<string>('1.0.0');
 
-  // Populate initial values when loaded
-  const isLoaded = !isLoading && settings;
-  if (isLoaded && (cloudEnabled !== settings.cloud_service_enabled || registrationEnabled !== settings.registration_enabled)) {
+  // Populate initial values once settings load (must run as an effect, not
+  // during render, or every render would re-trigger a state update loop).
+  // These are one-time-per-load hydrations of editable draft state from the
+  // query result, not a sync loop, so the cascading-render lint rule doesn't apply here.
+  /* eslint-disable react-hooks/set-state-in-effect */
+  useEffect(() => {
+    if (!settings) return;
     setCloudEnabled(settings.cloud_service_enabled ?? true);
     setRegistrationEnabled(settings.registration_enabled ?? true);
     if (settings.app_name) setAppName(settings.app_name);
     if (settings.app_version) setAppVersion(settings.app_version);
-  }
+    /* eslint-enable react-hooks/set-state-in-effect */
+  }, [settings]);
 
   const updateSettingMutation = useMutation({
     mutationFn: async ({ key, value }: { key: string; value: any }) => {
@@ -54,11 +63,25 @@ export default function SettingsPage() {
   });
 
   const handleSaveAll = async () => {
-    await updateSettingMutation.mutateAsync({ key: 'cloud_service_enabled', value: cloudEnabled });
-    await updateSettingMutation.mutateAsync({ key: 'registration_enabled', value: registrationEnabled });
-    await updateSettingMutation.mutateAsync({ key: 'app_name', value: appName });
-    await updateSettingMutation.mutateAsync({ key: 'app_version', value: appVersion });
-    alert('تم حفظ إعدادات النظام بنجاح!');
+    try {
+      await updateSettingMutation.mutateAsync({ key: 'cloud_service_enabled', value: cloudEnabled });
+      await updateSettingMutation.mutateAsync({ key: 'registration_enabled', value: registrationEnabled });
+      await updateSettingMutation.mutateAsync({ key: 'app_name', value: appName });
+      await updateSettingMutation.mutateAsync({ key: 'app_version', value: appVersion });
+
+      if (adminProfile) {
+        await logAdminAction(adminProfile.id, 'update_system_settings', null, {
+          cloud_service_enabled: cloudEnabled,
+          registration_enabled: registrationEnabled,
+          app_name: appName,
+          app_version: appVersion,
+        });
+      }
+
+      toast.add({ title: 'تم حفظ إعدادات النظام بنجاح!', type: 'success' });
+    } catch (err: any) {
+      toast.add({ title: 'فشل حفظ الإعدادات', description: err.message, type: 'error' });
+    }
   };
 
   return (

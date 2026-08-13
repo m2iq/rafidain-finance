@@ -25,14 +25,52 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
-import { Search, Ticket, Copy, Trash2, Plus, Check, RefreshCw } from 'lucide-react';
+import { Search, Ticket, Copy, Trash2, Plus, Check, RefreshCw, History, Users as UsersIcon, CheckCircle2, Repeat } from 'lucide-react';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
+import { sanitizeIlikeTerm } from '@/lib/supabase-filter';
+import { logAdminAction } from '@/lib/audit';
+import { useAuth } from '@/components/providers/AuthProvider';
+import { StatCard } from '@/components/ui/stat-card';
 
 export default function VouchersPage() {
   const queryClient = useQueryClient();
+  const { adminProfile } = useAuth();
   const [searchTerm, setSearchTerm] = useState('');
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const pageSize = 15;
+  const [historyVoucher, setHistoryVoucher] = useState<{ id: string; code: string } | null>(null);
+
+  const { data: kpis } = useQuery({
+    queryKey: ['adminVouchersKpis'],
+    queryFn: async () => {
+      const [totalRes, activeRes, usagesRes] = await Promise.all([
+        supabase.from('voucher_codes').select('*', { count: 'exact', head: true }),
+        supabase.from('voucher_codes').select('*', { count: 'exact', head: true }).eq('status', 'active'),
+        supabase.from('voucher_codes').select('current_usages'),
+      ]);
+      return {
+        total: totalRes.count ?? 0,
+        active: activeRes.count ?? 0,
+        totalUsages: (usagesRes.data || []).reduce((acc: number, v: any) => acc + (v.current_usages || 0), 0),
+      };
+    },
+  });
+
+  const { data: redemptions, isLoading: isLoadingRedemptions } = useQuery({
+    queryKey: ['adminVoucherRedemptions', historyVoucher?.id],
+    enabled: !!historyVoucher,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('voucher_redemptions')
+        .select('id, redeemed_at, users(id, name, phone)')
+        .eq('voucher_id', historyVoucher!.id)
+        .order('redeemed_at', { ascending: false });
+      if (error) throw error;
+      return data || [];
+    },
+  });
 
   const [newVoucher, setNewVoucher] = useState({
     code: '',
@@ -40,23 +78,29 @@ export default function VouchersPage() {
     max_usages: 1,
   });
 
-  const { data: vouchers, isLoading } = useQuery({
-    queryKey: ['adminVouchers', searchTerm],
+  const { data, isLoading } = useQuery({
+    queryKey: ['adminVouchers', searchTerm, page],
     queryFn: async () => {
       let query = supabase
         .from('voucher_codes')
-        .select('*')
+        .select('*', { count: 'exact' })
         .order('created_at', { ascending: false });
 
       if (searchTerm.trim()) {
-        query = query.ilike('code', `%${searchTerm.trim()}%`);
+        query = query.ilike('code', `%${sanitizeIlikeTerm(searchTerm.trim())}%`);
       }
 
-      const { data, error } = await query;
+      const from = (page - 1) * pageSize;
+      query = query.range(from, from + pageSize - 1);
+
+      const { data, count, error } = await query;
       if (error) throw error;
-      return data;
+      return { vouchers: data || [], count: count || 0 };
     },
   });
+
+  const vouchers = data?.vouchers;
+  const totalPages = Math.max(1, Math.ceil((data?.count || 0) / pageSize));
 
   const createVoucherMutation = useMutation({
     mutationFn: async (voucher: typeof newVoucher) => {
@@ -68,6 +112,15 @@ export default function VouchersPage() {
       }]).select();
 
       if (error) throw error;
+
+      if (adminProfile) {
+        await logAdminAction(adminProfile.id, 'create_voucher', null, {
+          code: voucher.code.toUpperCase().trim(),
+          duration_days: voucher.duration_days,
+          max_usages: voucher.max_usages,
+        });
+      }
+
       return data;
     },
     onSuccess: () => {
@@ -78,10 +131,14 @@ export default function VouchersPage() {
   });
 
   const toggleStatusMutation = useMutation({
-    mutationFn: async ({ id, status }: { id: string; status: string }) => {
+    mutationFn: async ({ id, status, code }: { id: string; status: string; code: string }) => {
       const newStatus = status === 'active' ? 'inactive' : 'active';
       const { error } = await supabase.from('voucher_codes').update({ status: newStatus }).eq('id', id);
       if (error) throw error;
+
+      if (adminProfile) {
+        await logAdminAction(adminProfile.id, 'toggle_voucher', null, { code, status: newStatus });
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['adminVouchers'] });
@@ -89,9 +146,13 @@ export default function VouchersPage() {
   });
 
   const deleteVoucherMutation = useMutation({
-    mutationFn: async (id: string) => {
+    mutationFn: async ({ id, code }: { id: string; code: string }) => {
       const { error } = await supabase.from('voucher_codes').delete().eq('id', id);
       if (error) throw error;
+
+      if (adminProfile) {
+        await logAdminAction(adminProfile.id, 'delete_voucher', null, { code });
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['adminVouchers'] });
@@ -186,6 +247,12 @@ export default function VouchersPage() {
         </Dialog>
       </div>
 
+      <div className="grid gap-4 sm:grid-cols-3">
+        <StatCard title="إجمالي الأكواد" value={kpis?.total ?? 0} icon={Ticket} color="indigo" />
+        <StatCard title="أكواد مفعلة" value={kpis?.active ?? 0} icon={CheckCircle2} color="emerald" />
+        <StatCard title="إجمالي مرات الاستخدام" value={kpis?.totalUsages ?? 0} icon={Repeat} color="violet" />
+      </div>
+
       <Card className="rounded-2xl border shadow-sm">
         <CardHeader className="py-4 border-b">
           <div className="relative max-w-sm">
@@ -193,7 +260,10 @@ export default function VouchersPage() {
             <Input
               placeholder="البحث بالكود..."
               value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
+              onChange={(e) => {
+                setSearchTerm(e.target.value);
+                setPage(1);
+              }}
               className="pr-9 h-10 rounded-xl font-mono"
             />
           </div>
@@ -237,13 +307,21 @@ export default function VouchersPage() {
                     </TableCell>
                     <TableCell className="font-semibold text-xs">{v.duration_days} يوم</TableCell>
                     <TableCell className="text-xs">
-                      <span className="font-bold text-indigo-600 dark:text-indigo-400">{v.current_usages}</span> / {v.max_usages}
+                      <button
+                        type="button"
+                        onClick={() => setHistoryVoucher({ id: v.id, code: v.code })}
+                        className="flex items-center gap-1 font-bold text-indigo-600 dark:text-indigo-400 hover:underline"
+                        title="عرض سجل الاستخدام"
+                      >
+                        {v.current_usages} / {v.max_usages}
+                        <History className="h-3 w-3 opacity-60" />
+                      </button>
                     </TableCell>
                     <TableCell>
                       <Badge
                         variant={v.status === 'active' ? 'default' : v.status === 'expired' ? 'secondary' : 'destructive'}
                         className="cursor-pointer"
-                        onClick={() => toggleStatusMutation.mutate({ id: v.id, status: v.status })}
+                        onClick={() => toggleStatusMutation.mutate({ id: v.id, status: v.status, code: v.code })}
                       >
                         {v.status === 'active' ? 'مفعل' : v.status === 'expired' ? 'منتهي' : 'معطل'}
                       </Badge>
@@ -266,7 +344,7 @@ export default function VouchersPage() {
                           variant="ghost"
                           size="icon"
                           className="h-8 w-8 rounded-lg text-rose-600 hover:text-rose-700 hover:bg-rose-50"
-                          onClick={() => deleteVoucherMutation.mutate(v.id)}
+                          onClick={() => deleteVoucherMutation.mutate({ id: v.id, code: v.code })}
                           title="حذف"
                         >
                           <Trash2 className="h-4 w-4" />
@@ -278,8 +356,70 @@ export default function VouchersPage() {
               )}
             </TableBody>
           </Table>
+
+          {/* Pagination */}
+          <div className="flex items-center justify-between px-6 py-4 border-t">
+            <div className="text-xs text-muted-foreground">
+              عرض {data?.count ? (page - 1) * pageSize + 1 : 0} إلى {Math.min(page * pageSize, data?.count || 0)} من إجمالي {data?.count || 0} كود
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={page === 1 || isLoading}
+                className="rounded-lg text-xs"
+              >
+                السابق
+              </Button>
+              <span className="text-xs font-bold px-2">صفحة {page} من {totalPages}</span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                disabled={page === totalPages || isLoading}
+                className="rounded-lg text-xs"
+              >
+                التالي
+              </Button>
+            </div>
+          </div>
         </CardContent>
       </Card>
+
+      {/* Redemption History Dialog */}
+      <Dialog open={!!historyVoucher} onOpenChange={(open) => !open && setHistoryVoucher(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <UsersIcon className="h-5 w-5 text-indigo-600" />
+              سجل استخدام الكود{' '}
+              <span className="font-mono text-indigo-600 dark:text-indigo-400">{historyVoucher?.code}</span>
+            </DialogTitle>
+            <DialogDescription>قائمة المستخدمين الذين فعّلوا هذا الكود وتاريخ التفعيل</DialogDescription>
+          </DialogHeader>
+
+          <div className="max-h-[400px] overflow-y-auto space-y-2 py-2">
+            {isLoadingRedemptions ? (
+              [1, 2, 3].map((i) => <Skeleton key={i} className="h-14 rounded-xl" />)
+            ) : !redemptions?.length ? (
+              <p className="text-center text-sm text-muted-foreground py-8">لم يتم استخدام هذا الكود بعد.</p>
+            ) : (
+              redemptions.map((r: any) => (
+                <div key={r.id} className="flex items-center justify-between p-3 bg-muted/40 rounded-xl border">
+                  <div>
+                    <p className="font-semibold text-sm">{r.users?.name || 'مستخدم محذوف'}</p>
+                    <p className="text-xs text-muted-foreground dir-ltr text-right">{r.users?.phone || '—'}</p>
+                  </div>
+                  <span className="text-[11px] text-muted-foreground">
+                    {new Date(r.redeemed_at).toLocaleDateString('ar-IQ')}
+                  </span>
+                </div>
+              ))
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

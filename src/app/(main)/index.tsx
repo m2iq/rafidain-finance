@@ -2,6 +2,7 @@ import { useRouter } from "expo-router";
 import {
     ArrowDownLeft,
     ArrowUpRight,
+    Bell,
     CheckCircle,
     ChevronLeft,
     Clock,
@@ -17,14 +18,15 @@ import {
 import { useState } from "react";
 import {
     Image,
+    RefreshControl,
     ScrollView,
     StatusBar,
     StyleSheet,
     TouchableOpacity,
     View,
 } from "react-native";
-import { Avatar, Surface, Text, useTheme } from "react-native-paper";
-import Animated from "react-native-reanimated";
+import { ActivityIndicator, Avatar, Surface, Text, useTheme } from "react-native-paper";
+import Animated, { FadeIn } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAppStore } from "../../core/store/appStore";
 import AmbientBackground from "../../shared/components/AmbientBackground";
@@ -34,24 +36,49 @@ import { formatCurrency } from "../../shared/utils/currency";
 
 import { useCustomers } from "../../features/customers/api/useCustomers";
 import { useDebts } from "../../features/debts/api/useDebts";
+import { NotificationService } from "../../core/notifications/notificationService";
+import { runSyncWithProgress } from "../../core/supabase/syncService";
 
 export default function DashboardScreen() {
-  console.log("[DASHBOARD] Component mounted or re-rendering");
   const user = useAppStore((s) => s.user);
   const isCloudMode = useAppStore((s) => s.isCloudMode);
   const theme = useTheme();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const [hideBalances, setHideBalances] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const unreadNotifsCount = NotificationService.getUnreadCount();
 
-  console.log("[DASHBOARD] Fetching customers...");
-  const { data: customers = [] } = useCustomers();
-  console.log("[DASHBOARD] Fetching debts...");
-  const { data: debts = [] } = useDebts();
+  const {
+    data: customers = [],
+    refetch: refetchCustomers,
+    isRefetching: isRefetchingCustomers,
+  } = useCustomers();
+  const {
+    data: debts = [],
+    refetch: refetchDebts,
+    isRefetching: isRefetchingDebts,
+  } = useDebts();
 
-  console.log(
-    `[DASHBOARD] Customers loaded: ${customers.length}, Debts loaded: ${debts.length}`,
-  );
+  const handleRefresh = () => {
+    refetchCustomers();
+    refetchDebts();
+  };
+
+  const handleSyncPress = async () => {
+    if (!isCloudMode || !user?.id) {
+      router.push("/(main)/settings");
+      return;
+    }
+    setIsSyncing(true);
+    try {
+      await runSyncWithProgress(user.id, () => {});
+      refetchCustomers();
+      refetchDebts();
+    } finally {
+      setIsSyncing(false);
+    }
+  };
 
   const totalRemainingDebts = debts.reduce(
     (acc, d) =>
@@ -69,30 +96,24 @@ export default function DashboardScreen() {
     (c) => (c.total_debt || 0) > 0,
   ).length;
 
-  let recentActivities: any[] = [];
-  try {
-    recentActivities = debts.slice(0, 5).map((d) => ({
-      id: d.id,
-      customerName: d.customerName || "عميل غير معرف",
-      action: d.title || "تسجيل دين",
-      amount: d.total_amount,
-      type: d.status === "paid" ? "payment" : "debt",
-      time: d.created_at
-        ? new Date(d.created_at).toISOString().split("T")[0]
-        : "مؤخراً",
-    }));
-    console.log("[DASHBOARD] recentActivities mapped successfully");
-  } catch (e) {
-    console.error("[DASHBOARD] Error mapping recentActivities:", e);
-    recentActivities = debts.slice(0, 5).map((d) => ({
-      id: d.id,
-      customerName: d.customerName || "عميل غير معرف",
-      action: d.title || "تسجيل دين",
-      amount: d.total_amount,
-      type: d.status === "paid" ? "payment" : "debt",
-      time: "مؤخراً (تنسيق التاريخ غير مدعوم)",
-    }));
-  }
+  const dueInstallmentsCount = debts.filter((d: any) => {
+    const remaining =
+      d.remaining_amount !== undefined
+        ? d.remaining_amount
+        : Math.max(0, (d.total_amount || 0) - (d.paid_amount || 0));
+    return d.status === "overdue" || (remaining > 0 && d.status !== "paid");
+  }).length;
+
+  const recentActivities: any[] = debts.slice(0, 5).map((d) => ({
+    id: d.id,
+    customerName: d.customerName || "عميل غير معرف",
+    action: d.title || "تسجيل دين",
+    amount: d.total_amount,
+    type: d.status === "paid" ? "payment" : "debt",
+    time: d.created_at
+      ? new Date(d.created_at).toISOString().split("T")[0]
+      : "مؤخراً",
+  }));
 
   const ACTIONS = [
     {
@@ -121,7 +142,7 @@ export default function DashboardScreen() {
       id: "installments",
       title: ar.home.dueInstallments,
       desc: ar.home.dueInstallmentsDesc,
-      badge: "3",
+      badge: dueInstallmentsCount > 0 ? String(dueInstallmentsCount) : undefined,
       icon: Clock,
       illustration: require("@/assets/illustration/Generating new leads-rafiki.png"),
       color: "#D97706",
@@ -157,6 +178,14 @@ export default function DashboardScreen() {
           },
         ]}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={isRefetchingCustomers || isRefetchingDebts}
+            onRefresh={handleRefresh}
+            colors={[theme.colors.primary]}
+            tintColor={theme.colors.primary}
+          />
+        }
       >
         <StatusBar
           barStyle={theme.dark ? "light-content" : "dark-content"}
@@ -203,18 +232,70 @@ export default function DashboardScreen() {
             </View>
           </View>
 
-          <AnimatedTouchable
-            style={[
-              styles.syncButton,
-              {
-                backgroundColor: theme.colors.surfaceVariant,
-                borderColor: theme.colors.outlineVariant,
-              },
-            ]}
-            scaleTo={0.9}
-          >
-            <RefreshCw size={18} color={theme.colors.onSurface} />
-          </AnimatedTouchable>
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <AnimatedTouchable
+              onPress={() => router.push("/(main)/notifications")}
+              style={[
+                styles.syncButton,
+                {
+                  backgroundColor: theme.colors.surfaceVariant,
+                  borderColor: theme.colors.outlineVariant,
+                  position: 'relative',
+                },
+              ]}
+              scaleTo={0.9}
+            >
+              <Bell size={18} color={theme.colors.onSurface} />
+              {unreadNotifsCount > 0 && (
+                <View
+                  style={{
+                    position: 'absolute',
+                    top: -4,
+                    right: -4,
+                    backgroundColor: '#EF4444',
+                    borderRadius: 10,
+                    minWidth: 18,
+                    height: 18,
+                    justifyContent: 'center',
+                    alignItems: 'center',
+                    paddingHorizontal: 4,
+                    borderWidth: 1.5,
+                    borderColor: theme.colors.surface,
+                  }}
+                >
+                  <Text
+                    style={{
+                      color: '#FFFFFF',
+                      fontSize: 10,
+                      fontFamily: 'Cairo_700Bold',
+                      lineHeight: 12,
+                    }}
+                  >
+                    {unreadNotifsCount > 9 ? '+9' : unreadNotifsCount}
+                  </Text>
+                </View>
+              )}
+            </AnimatedTouchable>
+
+            <AnimatedTouchable
+              onPress={handleSyncPress}
+              disabled={isSyncing}
+              style={[
+                styles.syncButton,
+                {
+                  backgroundColor: theme.colors.surfaceVariant,
+                  borderColor: theme.colors.outlineVariant,
+                },
+              ]}
+              scaleTo={0.9}
+            >
+              {isSyncing ? (
+                <ActivityIndicator size={16} color={theme.colors.onSurface} />
+              ) : (
+                <RefreshCw size={18} color={theme.colors.onSurface} />
+              )}
+            </AnimatedTouchable>
+          </View>
         </Animated.View>
 
         {/* Hero Card Banner */}
@@ -241,6 +322,7 @@ export default function DashboardScreen() {
                 activeOpacity={0.7}
                 onPress={() => setHideBalances((h) => !h)}
                 style={styles.eyeToggle}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               >
                 {hideBalances ? (
                   <EyeOff size={18} color="#C7D2FE" />
@@ -342,7 +424,7 @@ export default function DashboardScreen() {
                 fontFamily: "Cairo_700Bold",
               }}
             >
-              + تسجيل دين
+              + {ar.home.addDebt}
             </Text>
           </TouchableOpacity>
 
@@ -365,7 +447,7 @@ export default function DashboardScreen() {
                 fontFamily: "Cairo_700Bold",
               }}
             >
-              + عميل جديد
+              + {ar.home.addCustomer}
             </Text>
           </TouchableOpacity>
 
@@ -388,7 +470,7 @@ export default function DashboardScreen() {
                 fontFamily: "Cairo_700Bold",
               }}
             >
-              تسديد قسط
+              {ar.home.payInstallment}
             </Text>
           </TouchableOpacity>
         </View>

@@ -12,6 +12,7 @@ export interface AppUser {
 interface AppState {
   isCloudMode: boolean;
   isDarkMode: boolean;
+  notificationsEnabled: boolean;
   user: AppUser | null;
   _hasHydrated: boolean;
   hasActiveSubscription: boolean;
@@ -25,6 +26,8 @@ interface AppState {
   // Cloud
   toggleCloudMode: () => void;
   setCloudMode: (isCloud: boolean) => void;
+  // Notifications
+  setNotificationsEnabled: (val: boolean) => void;
   // Subscription
   setSubscription: (isActive: boolean) => void;
   // Hydration
@@ -38,6 +41,7 @@ export const useAppStore = create<AppState>()(
     (set) => ({
       isCloudMode: false,
       isDarkMode: false,
+      notificationsEnabled: true,
       user: null,
       _hasHydrated: false,
       hasActiveSubscription: false,
@@ -48,6 +52,7 @@ export const useAppStore = create<AppState>()(
       setDarkMode: (isDarkMode) => set({ isDarkMode }),
       toggleCloudMode: () => set((state) => ({ isCloudMode: !state.isCloudMode })),
       setCloudMode: (isCloudMode) => set({ isCloudMode }),
+      setNotificationsEnabled: (notificationsEnabled) => set({ notificationsEnabled }),
       setSubscription: (hasActiveSubscription) => set({ hasActiveSubscription }),
       setHasHydrated: (val) => set({ _hasHydrated: val }),
       setDatabaseReady: (val) => set({ isDatabaseReady: val }),
@@ -59,6 +64,7 @@ export const useAppStore = create<AppState>()(
       partialize: (state) => ({
         isCloudMode: state.isCloudMode,
         isDarkMode: state.isDarkMode,
+        notificationsEnabled: state.notificationsEnabled,
         user: state.user,
         hasActiveSubscription: state.hasActiveSubscription,
       }),

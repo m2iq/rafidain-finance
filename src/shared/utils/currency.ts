@@ -67,4 +67,59 @@ export function formatNumber(amount: number | null | undefined): string {
   });
 }
 
+/**
+ * تنسيق قيمة حقل السعر أثناء الكتابة (مثال: 10000 → "10,000")
+ */
+export function formatPriceInput(value: string | number | null | undefined): string {
+  if (value === null || value === undefined || value === '') return '';
+  const digitsOnly = value.toString().replace(/[^0-9]/g, '');
+  if (!digitsOnly) return '';
+  const num = parseInt(digitsOnly, 10);
+  if (isNaN(num)) return '';
+  return num.toLocaleString('en-US');
+}
+
+/**
+ * تحويل السعر المنسق (مثل "10,000") إلى نص رقمي مجرد ("10000")
+ */
+export function parsePriceInput(value: string | null | undefined): string {
+  if (!value) return '';
+  return value.toString().replace(/[^0-9]/g, '');
+}
+
+export function formatDateTime(isoString: string | null | undefined): string {
+  if (!isoString) return '';
+  try {
+    const d = new Date(isoString);
+    if (isNaN(d.getTime())) return isoString;
+    return d.toLocaleDateString('ar-IQ', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true,
+    });
+  } catch {
+    return isoString;
+  }
+}
+
+export function formatDateOnly(isoString: string | null | undefined): string {
+  if (!isoString) return '';
+  try {
+    const d = new Date(isoString);
+    if (isNaN(d.getTime())) return isoString;
+    return d.toLocaleDateString('ar-IQ', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    });
+  } catch {
+    return isoString;
+  }
+}
+
 export const CURRENCY_SYMBOL = IQD_SYMBOL;
+
+
