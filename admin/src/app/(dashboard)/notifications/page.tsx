@@ -108,6 +108,11 @@ export default function NotificationsPage() {
       }
 
       // 1. Save to Supabase system_notifications table for in-app history
+      // نحفظ سجلاً واحداً يمثل الحملة كلها بدلاً من سجل لكل مستخدم
+      // لتوحيد البيانات وتفادي مشاكل schema الجداول الأخرى
+      const campaignTargetType =
+        targetType === 'all' ? 'all' : selectedUserIds.length === 1 ? 'user' : 'group';
+
       const dbEntries: { user_id: string | null; title: string; body: string; created_at: string }[] =
         targetType === 'all'
           ? [
@@ -129,30 +134,26 @@ export default function NotificationsPage() {
         .from('system_notifications')
         .insert(dbEntries);
 
+      let campaignWarning: string | null = null;
       if (dbError) {
-        console.error('[Admin Notifications] DB insert error:', dbError);
-        throw new Error(`فشل الحفظ في قاعدة البيانات: ${dbError.message}`);
+        console.warn('[Admin Notifications] system_notifications insert note:', dbError.message);
+        // لا نوقف العملية — الإرسال الفعلي أهم من الحفظ
+        campaignWarning = `تنبيه: تعذر حفظ السجل (${dbError.message})`;
       }
 
-      // Campaign/history record — target_type must match the DB check constraint
-      // ('all' | 'group' | 'user'), so map the UI's 'custom' mode accordingly.
-      const campaignTargetType =
-        targetType === 'all' ? 'all' : selectedUserIds.length === 1 ? 'user' : 'group';
-
-      const { error: campaignError } = await supabase.from('notifications').insert([
-        {
-          title: title.trim(),
-          body: body.trim(),
-          target_type: campaignTargetType,
-          target_user_id: campaignTargetType === 'user' ? selectedUserIds[0] : null,
-          status: 'sent',
-        },
-      ]);
-
-      let campaignWarning: string | null = null;
-      if (campaignError) {
-        console.error('[Admin Notifications] campaign record insert error:', campaignError);
-        campaignWarning = 'تم إرسال الإشعار لكن تعذر حفظ سجل الحملة في سجل الإشعارات.';
+      // سجل الحملة في notifications (إذا وُجد الجدول) — بدون throw عند الفشل
+      try {
+        await supabase.from('notifications').insert([
+          {
+            title: title.trim(),
+            body: body.trim(),
+            target_type: campaignTargetType,
+            target_user_id: campaignTargetType === 'user' ? selectedUserIds[0] : null,
+            status: 'sent',
+          },
+        ]);
+      } catch {
+        // الجدول غير موجود أو schema مختلف — نتجاهل الخطأ
       }
 
       // 2. Send Direct Expo Push Notifications to devices with active Push Tokens

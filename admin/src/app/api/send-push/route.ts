@@ -24,7 +24,7 @@ export async function POST(request: Request) {
   }
 
   const title = typeof payload.title === 'string' ? payload.title.trim() : '';
-  const body = typeof payload.body === 'string' ? payload.body.trim() : '';
+  const body  = typeof payload.body  === 'string' ? payload.body.trim()  : '';
 
   if (!title || !body) {
     return NextResponse.json({ error: 'العنوان ونص الرسالة مطلوبان' }, { status: 400 });
@@ -48,23 +48,41 @@ export async function POST(request: Request) {
   const errors: string[] = [];
   const invalidTokens: string[] = [];
 
+  // بيانات إضافية اختيارية — يجب أن تكون object وليس null
+  const extraData: Record<string, unknown> =
+    payload.data && typeof payload.data === 'object' && !Array.isArray(payload.data)
+      ? (payload.data as Record<string, unknown>)
+      : {};
+
   for (let i = 0; i < tokens.length; i += CHUNK_SIZE) {
     const chunk = tokens.slice(i, i + CHUNK_SIZE);
-    const messages = chunk.map((token) => ({
-      to: token,
-      sound: 'default',
-      title,
-      body,
-      data: payload.data || null,
-      priority: 'high',
-      channelId: 'default', // يطابق القناة المُنشأة في التطبيق
-    }));
+
+    // ✅ Expo Push API v2: كل رسالة يجب أن تكون object بـ `to` string صالح
+    // `data` يجب أن يكون object وليس null — حذفناه عند الفراغ لتفادي VALIDATION_ERROR
+    const messages = chunk.map((token) => {
+      const msg: Record<string, unknown> = {
+        to: token,
+        sound: 'default',
+        title,
+        body,
+        priority: 'high',
+        channelId: 'default', // يطابق القناة المُنشأة في التطبيق
+      };
+
+      // أضف data فقط لو فيها محتوى
+      if (Object.keys(extraData).length > 0) {
+        msg.data = extraData;
+      }
+
+      return msg;
+    });
 
     try {
       const res = await fetch(EXPO_PUSH_URL, {
         method: 'POST',
         headers: {
           Accept: 'application/json',
+          'Accept-Encoding': 'gzip, deflate',
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(messages),
@@ -73,11 +91,18 @@ export async function POST(request: Request) {
       const text = await res.text();
 
       if (!res.ok) {
-        errors.push(`Expo رد بحالة ${res.status}: ${text.slice(0, 200)}`);
+        errors.push(`Expo رد بحالة ${res.status}: ${text.slice(0, 300)}`);
         continue;
       }
 
-      const result = JSON.parse(text);
+      let result: any;
+      try {
+        result = JSON.parse(text);
+      } catch {
+        errors.push('تعذر قراءة رد Expo');
+        continue;
+      }
+
       const tickets: any[] = Array.isArray(result?.data) ? result.data : [];
 
       tickets.forEach((ticket, idx) => {
@@ -88,9 +113,11 @@ export async function POST(request: Request) {
         if (ticket?.details?.error === 'DeviceNotRegistered') {
           invalidTokens.push(chunk[idx]);
         }
-        if (ticket?.message) errors.push(ticket.message);
+        const msg = ticket?.message || ticket?.details?.error;
+        if (msg) errors.push(String(msg));
       });
 
+      // أخطاء على مستوى الـ request ككل
       if (Array.isArray(result?.errors)) {
         for (const e of result.errors) errors.push(e?.message || String(e));
       }
