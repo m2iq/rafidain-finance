@@ -74,7 +74,7 @@ export default function LoginScreen() {
 
     setResetSubmitting(true);
     try {
-      const pushToken = await NotificationService.getPushToken();
+      const pushToken = await NotificationService.init();
 
       const { error } = await supabase.from('password_reset_requests').insert([
         {

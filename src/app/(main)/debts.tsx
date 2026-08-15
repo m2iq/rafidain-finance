@@ -143,10 +143,12 @@ const DebtCard = memo(function DebtCard({
   item,
   onPay,
   onViewHistory,
+  onWhatsApp,
 }: {
   item: any;
   onPay: (item: any) => void;
   onViewHistory: (item: any) => void;
+  onWhatsApp: (item: any) => void;
 }) {
   const theme = useTheme();
   const totalAmount = item.total_amount || item.totalAmount || 0;
@@ -335,25 +337,47 @@ const DebtCard = memo(function DebtCard({
             { borderTopColor: theme.colors.outlineVariant },
           ]}
         >
-          <TouchableOpacity
-            activeOpacity={0.7}
-            onPress={() => onViewHistory(item)}
-            style={[
-              styles.historyButton,
-              { backgroundColor: theme.dark ? "#1E293B" : "#F1F5F9" },
-            ]}
-          >
-            <History size={14} color={theme.colors.onSurfaceVariant} />
-            <Text
-              variant="labelSmall"
-              style={{
-                color: theme.colors.onSurfaceVariant,
-                fontFamily: "Cairo_600SemiBold",
-              }}
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <TouchableOpacity
+              activeOpacity={0.7}
+              onPress={() => onViewHistory(item)}
+              style={[
+                styles.historyButton,
+                { backgroundColor: theme.dark ? "#1E293B" : "#F1F5F9" },
+              ]}
             >
-              سجل التسديدات
-            </Text>
-          </TouchableOpacity>
+              <History size={14} color={theme.colors.onSurfaceVariant} />
+              <Text
+                variant="labelSmall"
+                style={{
+                  color: theme.colors.onSurfaceVariant,
+                  fontFamily: "Cairo_600SemiBold",
+                }}
+              >
+                سجل التسديدات
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              activeOpacity={0.7}
+              onPress={() => onWhatsApp(item)}
+              style={[
+                styles.historyButton,
+                { backgroundColor: theme.dark ? "#064E3B" : "#DCFCE7", borderColor: "#16A34A", borderWidth: 1 },
+              ]}
+            >
+              <MessageCircle size={14} color="#16A34A" />
+              <Text
+                variant="labelSmall"
+                style={{
+                  color: "#16A34A",
+                  fontFamily: "Cairo_600SemiBold",
+                }}
+              >
+                مراسلة
+              </Text>
+            </TouchableOpacity>
+          </View>
 
           {!isPaid && (
             <TouchableOpacity
@@ -642,6 +666,31 @@ export default function DebtsScreen() {
     }
   };
 
+  const handleWhatsApp = (item: any) => {
+    if (!item.customerPhone) {
+      alert("لا يوجد رقم هاتف مسجل لهذا العميل");
+      return;
+    }
+    
+    const totalAmount = item.total_amount || item.totalAmount || 0;
+    const paidAmount = item.paid_amount || item.paidAmount || 0;
+    const remaining = item.remaining_amount !== undefined ? item.remaining_amount : Math.max(0, totalAmount - paidAmount);
+    
+    const isInstallment = item.type === 'installment';
+    const text = isInstallment
+      ? `مرحباً، نود تذكيركم بتسديد القسط المستحق من: ${item.title}.\nإجمالي المبلغ: ${formatCurrency(totalAmount)}\nالمتبقي: ${formatCurrency(remaining)}\nيرجى التسديد في أقرب وقت. شكراً لكم.`
+      : `مرحباً، لديك دفعة مستحقة لدين: ${item.title}.\nإجمالي الدين: ${formatCurrency(totalAmount)}\nالمتبقي: ${formatCurrency(remaining)}\nيرجى التسديد في أقرب وقت. شكراً لكم.`;
+      
+    let phone = item.customerPhone.replace(/[^0-9]/g, '');
+    if (phone.startsWith('0')) {
+      phone = '964' + phone.substring(1);
+    }
+    
+    Linking.openURL(`https://wa.me/${phone}?text=${encodeURIComponent(text)}`).catch(() => {
+      alert("تعذر فتح واتساب، يرجى التأكد من تثبيت التطبيق.");
+    });
+  };
+
   const filtered = dbDebts.filter((item: any) => {
     const isInstallment = item.type === 'installment';
     if (activeTab === 'debts' && isInstallment) return false;
@@ -819,6 +868,7 @@ export default function DebtsScreen() {
             item={item}
             onPay={handleOpenPay}
             onViewHistory={handleOpenHistory}
+            onWhatsApp={handleWhatsApp}
           />
         )}
         keyExtractor={(item) => item.id}

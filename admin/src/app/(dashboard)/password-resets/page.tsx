@@ -113,15 +113,13 @@ export default function PasswordResetsPage() {
       // 3. Send remote Expo Push Notification if push_token exists
       if (selectedRequest.push_token) {
         try {
-          await fetch('https://exp.host/--/api/v2/push/send', {
+          await fetch('/api/send-push', {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
-              'Accept': 'application/json',
             },
             body: JSON.stringify({
-              to: selectedRequest.push_token,
-              sound: 'default',
+              tokens: [selectedRequest.push_token],
               title: notifTitle.trim(),
               body: finalMsg,
               data: { type: 'password_reset' },
@@ -390,16 +388,39 @@ export default function PasswordResetsPage() {
             </div>
           </div>
 
-          <DialogFooter className="gap-2 sm:gap-0">
-            <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
-              إلغاء
-            </Button>
+          <DialogFooter className="gap-2 sm:gap-0 flex-col sm:flex-row sm:justify-between">
             <Button
-              disabled={resolveMutation.isPending}
-              onClick={() => resolveMutation.mutate()}
+              variant="outline"
+              className="border-green-500 text-green-600 hover:bg-green-50 hover:text-green-700 w-full sm:w-auto"
+              onClick={() => {
+                if (!selectedRequest?.phone) return;
+                const pwdText = newPassword.trim() ? `كلمة المرور الجديدة الخاصة بك هي: ${newPassword.trim()}\n\nيرجى تغييرها بعد الدخول للحفاظ على سرية معلوماتك.` : `${notifBody.trim()}`;
+                const text = `مرحباً،\nبخصوص طلب استعادة كلمة المرور الخاص بك في تطبيق رافدين للتمويل:\n\n${pwdText}`;
+                
+                let phone = selectedRequest.phone.replace(/[^0-9]/g, '');
+                if (phone.startsWith('0')) {
+                  phone = '964' + phone.substring(1);
+                }
+                
+                window.open(`https://wa.me/${phone}?text=${encodeURIComponent(text)}`, '_blank');
+              }}
+              disabled={!selectedRequest}
+              type="button"
             >
-              {resolveMutation.isPending ? 'جاري الإرسال والمعالجة...' : 'إرسال وتعيين المعالجة ✓'}
+              مراسلة عبر واتساب
             </Button>
+            <div className="flex gap-2 w-full sm:w-auto mt-2 sm:mt-0">
+              <Button variant="outline" className="flex-1 sm:flex-none" onClick={() => setIsDialogOpen(false)}>
+                إلغاء
+              </Button>
+              <Button
+                className="flex-1 sm:flex-none"
+                disabled={resolveMutation.isPending}
+                onClick={() => resolveMutation.mutate()}
+              >
+                {resolveMutation.isPending ? 'جاري الإرسال والمعالجة...' : 'إرسال وتعيين المعالجة ✓'}
+              </Button>
+            </div>
           </DialogFooter>
         </DialogContent>
       </Dialog>
