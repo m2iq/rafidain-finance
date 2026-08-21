@@ -48,6 +48,8 @@ export const initializeDatabase = () => {
         name TEXT NOT NULL,
         phone TEXT,
         address TEXT,
+        latitude REAL,
+        longitude REAL,
         notes TEXT,
         status TEXT DEFAULT 'active',
         created_at TEXT NOT NULL,
@@ -188,6 +190,8 @@ export const initializeDatabase = () => {
       { table: 'payments', col: 'date', def: 'TEXT DEFAULT "2024-01-01"' },
       { table: 'payments', col: 'notes', def: 'TEXT' },
       { table: 'subscriptions', col: 'version', def: 'INTEGER DEFAULT 1' },
+      { table: 'customers', col: 'latitude', def: 'REAL' },
+      { table: 'customers', col: 'longitude', def: 'REAL' },
       { table: 'sync_queue', col: 'synced_at', def: 'TEXT' },
     ];
 

@@ -10,9 +10,10 @@ interface AppScreenProps {
   title?: string;
   scroll?: boolean;
   showBack?: boolean;
+  headerRight?: React.ReactNode;
 }
 
-export default function AppScreen({ children, title, scroll = false, showBack = true }: AppScreenProps) {
+export default function AppScreen({ children, title, scroll = false, showBack = true, headerRight }: AppScreenProps) {
   const theme = useTheme();
   const router = useRouter();
 
@@ -50,7 +51,9 @@ export default function AppScreen({ children, title, scroll = false, showBack = 
             )}
           </View>
           
-          <View style={styles.headerRight} />
+          <View style={[styles.headerRight, { alignItems: 'flex-end' }]}>
+            {headerRight}
+          </View>
         </View>
 
         {/* Body */}

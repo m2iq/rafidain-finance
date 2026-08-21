@@ -37,6 +37,11 @@
         "EXPO_PUBLIC_SUPABASE_URL": "https://lrndeqiyszaudiqtoxxl.supabase.co",
         "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxybmRlcWl5c3phdWRpcXRveHhsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODUyMjIxMzIsImV4cCI6MjEwMDc5ODEzMn0.of4i-bXCRpn1zR27OQYrzW8_lfL-FJZf0MiTjV-qLws"
       }
+    },
+    "ios-simulator": {
+      "ios": {
+        "simulator": true
+      }
     }
   },
   "submit": {

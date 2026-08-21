@@ -1,18 +1,68 @@
 import React, { useState } from 'react';
-import { View, StyleSheet, TouchableOpacity, RefreshControl, StatusBar, Modal, KeyboardAvoidingView, Platform, ScrollView, Linking, FlatList } from 'react-native';
-import { Text, useTheme, FAB, Avatar, Surface, Chip, Divider, ProgressBar } from 'react-native-paper';
-import { Search, Plus, Phone, MapPin, X, UserCheck, PhoneCall, MessageCircle, FileText, Calendar, DollarSign, Clock, CheckCircle } from 'lucide-react-native';
+import { View, StyleSheet, TouchableOpacity, RefreshControl, StatusBar, Modal, KeyboardAvoidingView, Platform, ScrollView, Linking, FlatList, Alert } from 'react-native';
+import { Text, useTheme, FAB, Avatar, Surface, Chip, Divider, ProgressBar, ActivityIndicator } from 'react-native-paper';
+import { Search, Plus, Phone, MapPin, X, UserCheck, PhoneCall, MessageCircle, FileText, Calendar, DollarSign, Clock, CheckCircle, Trash2, RefreshCcw, Map } from 'lucide-react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { TextInput } from 'react-native-paper';
-import { useCustomers, useCreateCustomer } from '../../features/customers/api/useCustomers';
-import { useDebts } from '../../features/debts/api/useDebts';
+import { TextInput, Button as PaperButton, Dialog, Portal } from 'react-native-paper';
+import * as Location from 'expo-location';
+import { WebView } from 'react-native-webview';
+import { useCustomers, useCreateCustomer, useDeleteCustomer, useUpdateCustomer } from '../../features/customers/api/useCustomers';
+import { useDebts, useResetCustomerAccount } from '../../features/debts/api/useDebts';
 import { useAppStore } from '../../core/store/appStore';
+import { runSync } from '../../core/supabase/syncService';
 import AppInput from '../../shared/components/AppInput';
 import AppButton from '../../shared/components/AppButton';
 import IraqLocationPicker from '../../shared/components/IraqLocationPicker';
 import ar from '../../shared/i18n/ar';
 import { formatCurrency } from '../../shared/utils/currency';
+import { GOVERNORATE_COORDINATES, DISTRICT_COORDINATES } from '../../shared/constants/iraqLocations';
+
+const getLeafletHtml = (lat: number, lng: number, interactive: boolean) => `
+<!DOCTYPE html>
+<html>
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <style>
+        body { padding: 0; margin: 0; }
+        html, body, #map { height: 100%; width: 100%; }
+        /* Fix for marker icon missing in some webviews */
+        .leaflet-default-icon-path { background-image: url(https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png); }
+    </style>
+</head>
+<body>
+    <div id="map"></div>
+    <script>
+        var map = L.map('map', { 
+            zoomControl: ${interactive}, 
+            dragging: ${interactive}, 
+            scrollWheelZoom: ${interactive} 
+        }).setView([${lat}, ${lng}], 13);
+        
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 19,
+            attribution: '© OpenStreetMap'
+        }).addTo(map);
+        
+        var marker = L.marker([${lat}, ${lng}], { draggable: ${interactive} }).addTo(map);
+        
+        ${interactive ? `
+        map.on('click', function(e) {
+            marker.setLatLng(e.latlng);
+            window.ReactNativeWebView.postMessage(JSON.stringify({lat: e.latlng.lat, lng: e.latlng.lng}));
+        });
+        
+        marker.on('dragend', function(e) {
+            var position = marker.getLatLng();
+            window.ReactNativeWebView.postMessage(JSON.stringify({lat: position.lat, lng: position.lng}));
+        });
+        ` : ''}
+    </script>
+</body>
+</html>
+`;
 
 function CustomerStatsHeader({ total, active, paid }: { total: number; active: number; paid: number }) {
   const theme = useTheme();
@@ -172,17 +222,26 @@ export default function CustomersScreen() {
   const [modalVisible, setModalVisible] = useState(false);
   const [detailsModalVisible, setDetailsModalVisible] = useState(false);
   const [selectedCustomer, setSelectedCustomer] = useState<any>(null);
+  const [editingCustomer, setEditingCustomer] = useState<any>(null);
 
   // Form State
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [governorate, setGovernorate] = useState('');
   const [district, setDistrict] = useState('');
+  const [latitude, setLatitude] = useState<number | null>(null);
+  const [longitude, setLongitude] = useState<number | null>(null);
   const [errorMsg, setErrorMsg] = useState('');
+  const [mapModalVisible, setMapModalVisible] = useState(false);
+  const [tempLocation, setTempLocation] = useState<{latitude: number, longitude: number} | null>(null);
+  const [isSyncing, setIsSyncing] = useState(false);
 
   const { data: customersData = [], isLoading: loading, refetch, isRefetching } = useCustomers();
   const { data: allDebts = [] } = useDebts();
   const createCustomerMutation = useCreateCustomer();
+  const updateCustomerMutation = useUpdateCustomer();
+  const deleteCustomerMutation = useDeleteCustomer();
+  const resetAccountMutation = useResetCustomerAccount();
 
   const customerDebts = selectedCustomer
     ? allDebts.filter((d: any) => d.customer_id === selectedCustomer.id)
@@ -225,22 +284,171 @@ export default function CustomersScreen() {
     try {
       setErrorMsg('');
       const fullAddress = governorate ? `${governorate} - ${district}` : '';
-      await createCustomerMutation.mutateAsync({
-        store_id: user?.id || '00000000-0000-0000-0000-000000000000',
-        name: name.trim(),
-        phone: phone.trim() || undefined,
-        address: fullAddress || undefined,
-        status: 'active',
-      });
+      
+      if (editingCustomer) {
+        await updateCustomerMutation.mutateAsync({
+          id: editingCustomer.id,
+          updates: {
+            name: name.trim(),
+            phone: phone.trim() || undefined,
+            address: fullAddress || undefined,
+            latitude: latitude || undefined,
+            longitude: longitude || undefined,
+          }
+        });
+      } else {
+        await createCustomerMutation.mutateAsync({
+          store_id: user?.id || '00000000-0000-0000-0000-000000000000',
+          name: name.trim(),
+          phone: phone.trim() || undefined,
+          address: fullAddress || undefined,
+          latitude: latitude || undefined,
+          longitude: longitude || undefined,
+          status: 'active',
+        });
+      }
 
       // Reset & Close
       setName('');
       setPhone('');
       setGovernorate('');
       setDistrict('');
+      setLatitude(null);
+      setLongitude(null);
+      setEditingCustomer(null);
       setModalVisible(false);
+      if (editingCustomer) {
+        setDetailsModalVisible(false);
+      }
     } catch (err: any) {
       setErrorMsg(err.message || 'فشل حفظ بيانات العميل');
+    }
+  };
+
+  const handleGetCurrentLocation = async () => {
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        setErrorMsg('إذن الوصول للموقع مطلوب');
+        return;
+      }
+      const loc = await Location.getCurrentPositionAsync({});
+      setLatitude(loc.coords.latitude);
+      setLongitude(loc.coords.longitude);
+    } catch (err) {
+      setErrorMsg('فشل الحصول على الموقع');
+    }
+  };
+
+  const handleOpenMapForPicker = () => {
+    if (latitude && longitude) {
+      // يوجد موقع محدد مسبقاً → استخدمه
+      setTempLocation({ latitude, longitude });
+    } else if (district && governorate && DISTRICT_COORDINATES[governorate]?.[district]) {
+      // يوجد منطقة محددة → استخدم إحداثياتها الدقيقة
+      setTempLocation(DISTRICT_COORDINATES[governorate][district]);
+    } else if (governorate && GOVERNORATE_COORDINATES[governorate]) {
+      // يوجد محافظة فقط → استخدم مركز المحافظة
+      setTempLocation(GOVERNORATE_COORDINATES[governorate]);
+    } else {
+      // لا يوجد شيء → بغداد كإحتياطي
+      setTempLocation({ latitude: 33.3152, longitude: 44.3661 });
+    }
+    setMapModalVisible(true);
+  };
+
+  const handleEditCustomer = () => {
+    if (!selectedCustomer) return;
+    setEditingCustomer(selectedCustomer);
+    setName(selectedCustomer.name || '');
+    setPhone(selectedCustomer.phone || '');
+    
+    if (selectedCustomer.address) {
+      const parts = selectedCustomer.address.split(' - ');
+      setGovernorate(parts[0] || '');
+      setDistrict(parts[1] || '');
+    } else {
+      setGovernorate('');
+      setDistrict('');
+    }
+    
+    setLatitude(selectedCustomer.latitude || null);
+    setLongitude(selectedCustomer.longitude || null);
+    setModalVisible(true);
+  };
+
+  const handleConfirmMapLocation = () => {
+    if (tempLocation) {
+      setLatitude(tempLocation.latitude);
+      setLongitude(tempLocation.longitude);
+    }
+    setMapModalVisible(false);
+  };
+
+  const confirmDeleteCustomerAlert = () => {
+    if (!selectedCustomer) return;
+    setDetailsModalVisible(false); // Close modal first to avoid z-index bugs
+    setTimeout(() => {
+      Alert.alert(
+        'حذف العميل',
+        `هل أنت متأكد من حذف العميل ${selectedCustomer?.name}؟` + 
+        (customerRemainingTotal > 0 ? `\n\nتنبيه: هذا العميل لديه ديون غير مسددة بقيمة ${formatCurrency(customerRemainingTotal)}!` : ''),
+        [
+          { text: 'إلغاء', style: 'cancel', onPress: () => setDetailsModalVisible(true) },
+          { 
+            text: 'حذف مؤكد', 
+            style: 'destructive',
+            onPress: async () => {
+              try {
+                await deleteCustomerMutation.mutateAsync(selectedCustomer.id);
+              } catch (e: any) {}
+            }
+          }
+        ]
+      );
+    }, 400); // Wait for modal animation to finish
+  };
+
+  const confirmResetAccountAlert = () => {
+    if (!selectedCustomer) return;
+    setDetailsModalVisible(false); // Close modal first
+    setTimeout(() => {
+      Alert.alert(
+        'تصفير الحساب',
+        `هل أنت متأكد من تصفير حساب العميل ${selectedCustomer?.name}؟\nهذا الإجراء سيجعل الرصيد المتبقي 0 وسيحول جميع الديون النشطة إلى مسددة مع الاحتفاظ بالسجل التاريخي.`,
+        [
+          { text: 'إلغاء', style: 'cancel', onPress: () => setDetailsModalVisible(true) },
+          { 
+            text: 'تأكيد التصفير', 
+            style: 'destructive',
+            onPress: async () => {
+              try {
+                await resetAccountMutation.mutateAsync({ customerId: selectedCustomer.id, storeId: selectedCustomer.store_id });
+                // Don't reopen modal on success, or maybe we do? Let's reopen to show 0 balance
+                setDetailsModalVisible(true);
+              } catch (e: any) {
+                setDetailsModalVisible(true);
+              }
+            }
+          }
+        ]
+      );
+    }, 400);
+  };
+
+  const handleRefresh = async () => {
+    if (user?.id) {
+      setIsSyncing(true);
+      try {
+        await runSync(user.id);
+      } catch (err) {
+        console.warn('Refresh sync failed', err);
+      } finally {
+        setIsSyncing(false);
+        refetch();
+      }
+    } else {
+      refetch();
     }
   };
 
@@ -323,8 +531,8 @@ export default function CustomersScreen() {
         ]}
         refreshControl={
           <RefreshControl
-            refreshing={isRefetching}
-            onRefresh={refetch}
+            refreshing={isRefetching || isSyncing}
+            onRefresh={handleRefresh}
             colors={[theme.colors.primary]}
             tintColor={theme.colors.primary}
           />
@@ -356,12 +564,15 @@ export default function CustomersScreen() {
         onPress={() => setModalVisible(true)}
       />
 
-      {/* Modal - إضافة عميل جديد */}
+      {/* Modal - إضافة/تعديل عميل */}
       <Modal
         visible={modalVisible}
         animationType="slide"
         transparent
-        onRequestClose={() => setModalVisible(false)}
+        onRequestClose={() => {
+          setModalVisible(false);
+          setEditingCustomer(null);
+        }}
       >
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -372,10 +583,10 @@ export default function CustomersScreen() {
               <View style={styles.modalTitleRow}>
                 <UserCheck size={22} color={theme.colors.primary} />
                 <Text variant="titleLarge" style={[styles.modalTitle, { color: theme.colors.onSurface }]}>
-                  إضافة عميل جديد
+                  {editingCustomer ? 'تعديل بيانات العميل' : 'إضافة عميل جديد'}
                 </Text>
               </View>
-              <TouchableOpacity onPress={() => setModalVisible(false)} style={styles.closeBtn}>
+              <TouchableOpacity onPress={() => { setModalVisible(false); setEditingCustomer(null); }} style={styles.closeBtn}>
                 <X size={20} color={theme.colors.outline} />
               </TouchableOpacity>
             </View>
@@ -413,17 +624,46 @@ export default function CustomersScreen() {
                 selectedGovernorate={governorate}
                 selectedDistrict={district}
                 onSelect={(gov, dist) => {
+                  if (governorate !== gov || district !== dist) {
+                    setLatitude(null);
+                    setLongitude(null);
+                  }
                   setGovernorate(gov);
                   setDistrict(dist);
                 }}
               />
 
+              <View style={{ height: 16 }} />
+              <Text variant="labelMedium" style={{ color: theme.colors.outline, marginBottom: 6, fontFamily: 'Cairo_600SemiBold' }}>
+                موقع العميل على الخريطة (اختياري)
+              </Text>
+              <View style={{ flexDirection: 'row', gap: 10 }}>
+                <TouchableOpacity
+                  onPress={handleGetCurrentLocation}
+                  style={[styles.contactBarBtn, { backgroundColor: theme.colors.primaryContainer, flex: 1 }]}
+                >
+                  <MapPin size={18} color={theme.colors.primary} />
+                  <Text style={{ color: theme.colors.primary, fontFamily: 'Cairo_600SemiBold', fontSize: 13 }}>
+                    موقعي الحالي
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={handleOpenMapForPicker}
+                  style={[styles.contactBarBtn, { backgroundColor: theme.dark ? '#111726' : '#F1F5F9', flex: 1, borderWidth: 1, borderColor: theme.colors.outlineVariant }]}
+                >
+                  <Map size={18} color={theme.colors.outline} />
+                  <Text style={{ color: theme.colors.onSurface, fontFamily: 'Cairo_600SemiBold', fontSize: 13 }}>
+                    {latitude ? 'تم التحديد' : 'تحديد يدوي'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
               <View style={{ height: 24 }} />
               <AppButton
-                label="حفظ العميل"
+                label={editingCustomer ? "تحديث العميل" : "حفظ العميل"}
                 onPress={handleSaveCustomer}
-                loading={createCustomerMutation.isPending}
-                disabled={createCustomerMutation.isPending}
+                loading={createCustomerMutation.isPending || updateCustomerMutation.isPending}
+                disabled={createCustomerMutation.isPending || updateCustomerMutation.isPending}
               />
             </ScrollView>
           </View>
@@ -446,9 +686,14 @@ export default function CustomersScreen() {
                   كشف حساب العميل التفصيلي
                 </Text>
               </View>
-              <TouchableOpacity onPress={() => setDetailsModalVisible(false)} style={styles.closeBtn}>
-                <X size={20} color={theme.colors.outline} />
-              </TouchableOpacity>
+              <View style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}>
+                <TouchableOpacity onPress={handleEditCustomer} style={styles.closeBtn}>
+                  <Text style={{ color: theme.colors.primary, fontFamily: 'Cairo_600SemiBold', fontSize: 13 }}>تعديل</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => setDetailsModalVisible(false)} style={styles.closeBtn}>
+                  <X size={20} color={theme.colors.outline} />
+                </TouchableOpacity>
+              </View>
             </View>
 
             {selectedCustomer && (
@@ -606,11 +851,122 @@ export default function CustomersScreen() {
                   })
                 )}
 
+                {/* Map Preview */}
+                {selectedCustomer.latitude && selectedCustomer.longitude ? (
+                  <View style={{ marginTop: 16 }}>
+                    <Text variant="titleSmall" style={{ color: theme.colors.onSurface, fontFamily: 'Cairo_700Bold', marginBottom: 10 }}>
+                      الموقع الجغرافي للعميل:
+                    </Text>
+                    <View style={{ height: 150, borderRadius: 16, overflow: 'hidden', marginBottom: 10 }}>
+                      <WebView
+                        source={{ html: getLeafletHtml(selectedCustomer.latitude, selectedCustomer.longitude, false) }}
+                        style={{ width: '100%', height: '100%' }}
+                        scrollEnabled={false}
+                        javaScriptEnabled={true}
+                        originWhitelist={['*']}
+                      />
+                    </View>
+                    <TouchableOpacity
+                      activeOpacity={0.8}
+                      onPress={async () => {
+                        const lat = selectedCustomer.latitude;
+                        const lng = selectedCustomer.longitude;
+                        const geoUrl = Platform.OS === 'ios' ? `maps:${lat},${lng}?q=${lat},${lng}` : `geo:${lat},${lng}?q=${lat},${lng}`;
+                        const webUrl = `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
+                        
+                        try {
+                          const supported = await Linking.canOpenURL(geoUrl);
+                          if (supported) {
+                            await Linking.openURL(geoUrl);
+                          } else {
+                            await Linking.openURL(webUrl);
+                          }
+                        } catch (error) {
+                          await Linking.openURL(webUrl);
+                        }
+                      }}
+                      style={[styles.contactBarBtn, { backgroundColor: theme.colors.primaryContainer }]}
+                    >
+                      <Map size={18} color={theme.colors.primary} />
+                      <Text style={{ color: theme.colors.primary, fontFamily: 'Cairo_700Bold', fontSize: 13 }}>
+                        فتح في تطبيق الخرائط
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                ) : null}
+
+                <Divider style={{ marginVertical: 24 }} />
+
+                <Text variant="titleSmall" style={{ color: theme.colors.error, fontFamily: 'Cairo_700Bold', marginBottom: 10 }}>
+                  منطقة الخطر (إجراءات حساسة)
+                </Text>
+                <View style={{ gap: 10, marginBottom: 40 }}>
+                  <TouchableOpacity
+                    activeOpacity={0.8}
+                    onPress={confirmResetAccountAlert}
+                    style={[styles.contactBarBtn, { backgroundColor: '#FEF2F2', borderWidth: 1, borderColor: '#FECACA' }]}
+                  >
+                    <RefreshCcw size={18} color="#DC2626" />
+                    <Text style={{ color: '#DC2626', fontFamily: 'Cairo_700Bold', fontSize: 13 }}>
+                      تصفير حساب العميل
+                    </Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    activeOpacity={0.8}
+                    onPress={confirmDeleteCustomerAlert}
+                    style={[styles.contactBarBtn, { backgroundColor: '#FEF2F2', borderWidth: 1, borderColor: '#FECACA' }]}
+                  >
+                    <Trash2 size={18} color="#DC2626" />
+                    <Text style={{ color: '#DC2626', fontFamily: 'Cairo_700Bold', fontSize: 13 }}>
+                      حذف العميل
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+
               </ScrollView>
             )}
           </View>
         </View>
       </Modal>
+
+      {/* Map Picker Modal */}
+      <Modal visible={mapModalVisible} animationType="slide" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={[styles.detailsSheet, { backgroundColor: theme.colors.surface, height: '80%' }]}>
+            <View style={styles.modalHeader}>
+              <Text variant="titleMedium" style={styles.modalTitle}>تحديد الموقع</Text>
+              <TouchableOpacity onPress={() => setMapModalVisible(false)}><X size={20} color={theme.colors.outline} /></TouchableOpacity>
+            </View>
+            <View style={{ flex: 1, overflow: 'hidden' }}>
+              {tempLocation && (
+                <WebView
+                  key={`map-${tempLocation.latitude.toFixed(6)}-${tempLocation.longitude.toFixed(6)}`}
+                  source={{ html: getLeafletHtml(tempLocation.latitude, tempLocation.longitude, true) }}
+                  style={{ flex: 1 }}
+                  javaScriptEnabled={true}
+                  domStorageEnabled={true}
+                  originWhitelist={['*']}
+                  onMessage={(event) => {
+                    try {
+                      const data = JSON.parse(event.nativeEvent.data);
+                      if (data.lat && data.lng) {
+                        setTempLocation({ latitude: data.lat, longitude: data.lng });
+                      }
+                    } catch (e) {}
+                  }}
+                />
+              )}
+            </View>
+            <View style={{ padding: 16 }}>
+              <AppButton label="تأكيد الموقع" onPress={handleConfirmMapLocation} />
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+
+
     </View>
   );
 }

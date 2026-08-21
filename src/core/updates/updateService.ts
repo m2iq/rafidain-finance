@@ -1,7 +1,7 @@
-import { supabase } from '../supabase/supabaseClient';
 import { getContentUriAsync } from 'expo-file-system/legacy';
 import * as IntentLauncher from 'expo-intent-launcher';
 import { Platform } from 'react-native';
+import { supabase } from '../supabase/supabaseClient';
 
 export interface AppUpdate {
   id: string;
@@ -13,7 +13,7 @@ export interface AppUpdate {
   created_at: string;
 }
 
-export const CURRENT_VERSION_CODE = 2; // You can increment this number on every store release
+export const CURRENT_VERSION_CODE = 4; // You can increment this number on every store release
 
 export const checkForUpdates = async (): Promise<AppUpdate | null> => {
   try {
@@ -47,7 +47,7 @@ export const installApk = async (localUri: string): Promise<boolean> => {
 
   try {
     const contentUri = await getContentUriAsync(localUri);
-    
+
     await IntentLauncher.startActivityAsync('android.intent.action.VIEW', {
       data: contentUri,
       flags: 1, // FLAG_GRANT_READ_URI_PERMISSION

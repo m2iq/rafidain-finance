@@ -293,5 +293,50 @@ export class DebtRepository {
 
     triggerBackgroundSync(storeId);
   }
+
+  static resetAccount(customerId: string, storeId: string): void {
+    const now = new Date().toISOString();
+    
+    // Find all active debts for this customer
+    const activeDebts = db.getAllSync(
+      `SELECT * FROM debts WHERE customer_id = ? AND store_id = ? AND remaining_amount > 0 AND deleted_at IS NULL`,
+      [customerId, storeId]
+    ) as Debt[];
+
+    if (activeDebts.length === 0) return;
+
+    for (const debt of activeDebts) {
+      const remainingAmount = debt.remaining_amount;
+      const newPaidAmount = debt.total_amount;
+      
+      // Mark debt as paid
+      db.runSync(
+        `UPDATE debts SET paid_amount = ?, remaining_amount = 0, status = 'paid', updated_at = ?, version = version + 1 WHERE id = ?`,
+        [newPaidAmount, now, debt.id]
+      );
+      
+      // Add sync queue for debt
+      db.runSync(
+        `INSERT INTO sync_queue (id, table_name, record_id, operation, created_at) VALUES (?, ?, ?, ?, ?)`,
+        [randomUUID(), 'debts', debt.id, 'UPDATE', now]
+      );
+
+      // Create a reset payment record
+      const paymentId = randomUUID();
+      db.runSync(
+        `INSERT INTO payments (id, debt_id, customer_id, store_id, amount, payment_date, type, payment_method, date, notes, created_at, updated_at, version)
+         VALUES (?, ?, ?, ?, ?, ?, 'reset', 'other', ?, 'تم تصفير الحساب بناءً على طلب المستخدم', ?, ?, 1)`,
+        [paymentId, debt.id, customerId, storeId, remainingAmount, now.substring(0, 10), now.substring(0, 10), now, now]
+      );
+
+      // Add sync queue for payment
+      db.runSync(
+        `INSERT INTO sync_queue (id, table_name, record_id, operation, created_at) VALUES (?, ?, ?, ?, ?)`,
+        [randomUUID(), 'payments', paymentId, 'INSERT', now]
+      );
+    }
+
+    triggerBackgroundSync(storeId);
+  }
 }
 

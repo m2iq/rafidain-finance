@@ -1,7 +1,7 @@
 {
   "name": "rafidainfinance",
   "main": "expo-router/entry",
-  "version": "2.2.0",
+  "version": "2.1.0",
   "dependencies": {
     "@expo-google-fonts/cairo": "^0.4.2",
     "@expo/vector-icons": "^15.0.2",

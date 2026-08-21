@@ -47,7 +47,7 @@ export default function DashboardScreen() {
   const insets = useSafeAreaInsets();
   const [hideBalances, setHideBalances] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
-  const unreadNotifsCount = NotificationService.getUnreadCount();
+  const unreadNotifsCount = NotificationService.getUnreadCount(user?.id);
 
   const {
     data: customers = [],
@@ -60,9 +60,22 @@ export default function DashboardScreen() {
     isRefetching: isRefetchingDebts,
   } = useDebts();
 
-  const handleRefresh = () => {
-    refetchCustomers();
-    refetchDebts();
+  const handleRefresh = async () => {
+    if (user?.id) {
+      setIsSyncing(true);
+      try {
+        await runSyncWithProgress(user.id, () => {});
+      } catch (err) {
+        console.warn('Dashboard pull refresh sync failed', err);
+      } finally {
+        setIsSyncing(false);
+        refetchCustomers();
+        refetchDebts();
+      }
+    } else {
+      refetchCustomers();
+      refetchDebts();
+    }
   };
 
   const handleSyncPress = async () => {

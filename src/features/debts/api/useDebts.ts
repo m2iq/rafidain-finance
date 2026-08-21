@@ -110,3 +110,18 @@ export function useAddDebtItem() {
     },
   });
 }
+
+export function useResetCustomerAccount() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ customerId, storeId }: { customerId: string; storeId: string }) => {
+      return DebtRepository.resetAccount(customerId, storeId);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['debts'] });
+      queryClient.invalidateQueries({ queryKey: ['customers'] });
+      queryClient.invalidateQueries({ queryKey: ['debtPayments'] });
+    },
+  });
+}

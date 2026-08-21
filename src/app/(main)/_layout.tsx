@@ -3,7 +3,7 @@ import { useEffect } from "react";
 import { AppState, ActivityIndicator, StatusBar, View } from "react-native";
 import { useTheme } from "react-native-paper";
 import { useAppStore } from "../../core/store/appStore";
-import { checkLiveSubscription, triggerBackgroundSync } from "../../core/supabase/syncService";
+import { checkLiveSubscription, triggerBackgroundSync, startPeriodicSync, stopPeriodicSync, runSync } from "../../core/supabase/syncService";
 import { NotificationService } from "../../core/notifications/notificationService";
 import FloatingTabBar from "../../shared/components/FloatingTabBar";
 
@@ -20,13 +20,11 @@ export default function MainLayout() {
       NotificationService.checkAndScheduleDueNotifications(user.id!);
     });
 
-    // Trigger initial background sync
+    // Initial sync on mount
     triggerBackgroundSync(user.id);
 
-    // Auto periodic background sync every 15 seconds
-    const intervalId = setInterval(() => {
-      triggerBackgroundSync(user.id);
-    }, 15000);
+    // Start periodic sync every 5 minutes
+    startPeriodicSync();
 
     // Fetch system notifications every 60 seconds
     const notifIntervalId = setInterval(() => {
@@ -35,16 +33,16 @@ export default function MainLayout() {
       }
     }, 60000);
 
-    // Auto sync when app returns from background to foreground
+    // Full sync when app returns from background to foreground
     const appStateSub = AppState.addEventListener("change", (nextState) => {
       if (nextState === "active" && user?.id) {
-        triggerBackgroundSync(user.id);
+        runSync(user.id).catch(() => {});
         NotificationService.fetchAndSyncSystemNotifications(user.id);
       }
     });
 
     return () => {
-      clearInterval(intervalId);
+      stopPeriodicSync();
       clearInterval(notifIntervalId);
       appStateSub.remove();
     };

@@ -23,7 +23,11 @@ class GlobalErrorBoundary extends Component<
   { children: React.ReactNode },
   { hasError: boolean; error: Error | null; errorInfo: ErrorInfo | null }
 > {
-  state = { hasError: false, error: null, errorInfo: null };
+  state: { hasError: boolean; error: Error | null; errorInfo: ErrorInfo | null } = {
+    hasError: false,
+    error: null,
+    errorInfo: null,
+  };
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     this.setState({ hasError: true, error, errorInfo });

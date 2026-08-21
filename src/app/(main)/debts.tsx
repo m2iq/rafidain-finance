@@ -57,6 +57,7 @@ import {
   useAddDebtItem,
   useDebtItems,
 } from "../../features/debts/api/useDebts";
+import { runSync } from "../../core/supabase/syncService";
 import AppButton from "../../shared/components/AppButton";
 import AppInput from "../../shared/components/AppInput";
 import ar from "../../shared/i18n/ar";
@@ -423,6 +424,7 @@ export default function DebtsScreen() {
   );
   const [query, setQuery] = useState("");
   const [activeTab, setActiveTab] = useState<"debts" | "installments">("debts");
+  const [isSyncing, setIsSyncing] = useState(false);
 
   // Main Modals
   const [addModalVisible, setAddModalVisible] = useState(false); // for debts
@@ -726,6 +728,22 @@ export default function DebtsScreen() {
     0,
   );
 
+  const handleRefresh = async () => {
+    if (user?.id) {
+      setIsSyncing(true);
+      try {
+        await runSync(user.id);
+      } catch (err) {
+        console.warn('Refresh sync failed', err);
+      } finally {
+        setIsSyncing(false);
+        refetch();
+      }
+    } else {
+      refetch();
+    }
+  };
+
   return (
     <View
       style={[styles.container, { backgroundColor: theme.colors.background }]}
@@ -878,8 +896,8 @@ export default function DebtsScreen() {
         ]}
         refreshControl={
           <RefreshControl
-            refreshing={isRefetching}
-            onRefresh={refetch}
+            refreshing={isRefetching || isSyncing}
+            onRefresh={handleRefresh}
             colors={[theme.colors.primary]}
             tintColor={theme.colors.primary}
           />

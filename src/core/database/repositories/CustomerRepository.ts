@@ -8,6 +8,8 @@ export interface Customer {
   name: string;
   phone: string | null;
   address: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
   notes: string | null;
   status: 'active' | 'inactive';
   created_at: string;
@@ -34,9 +36,9 @@ export class CustomerRepository {
     const now = new Date().toISOString();
     
     db.runSync(
-      `INSERT INTO customers (id, store_id, name, phone, address, notes, status, created_at, updated_at, version) 
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [id, customer.store_id, customer.name, customer.phone, customer.address, customer.notes, customer.status, now, now, 1]
+      `INSERT INTO customers (id, store_id, name, phone, address, latitude, longitude, notes, status, created_at, updated_at, version) 
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [id, customer.store_id, customer.name, customer.phone, customer.address, customer.latitude || null, customer.longitude || null, customer.notes, customer.status, now, now, 1]
     );
 
     // Add to sync queue
@@ -60,8 +62,8 @@ export class CustomerRepository {
     const updatedCustomer = { ...existing, ...updates };
 
     db.runSync(
-      `UPDATE customers SET name = ?, phone = ?, address = ?, notes = ?, status = ?, updated_at = ?, version = ? WHERE id = ?`,
-      [updatedCustomer.name, updatedCustomer.phone, updatedCustomer.address, updatedCustomer.notes, updatedCustomer.status, now, newVersion, id]
+      `UPDATE customers SET name = ?, phone = ?, address = ?, latitude = ?, longitude = ?, notes = ?, status = ?, updated_at = ?, version = ? WHERE id = ?`,
+      [updatedCustomer.name, updatedCustomer.phone, updatedCustomer.address, updatedCustomer.latitude || null, updatedCustomer.longitude || null, updatedCustomer.notes, updatedCustomer.status, now, newVersion, id]
     );
 
     // Add to sync queue

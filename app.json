@@ -2,7 +2,7 @@
   "expo": {
     "name": "ديون واقساط الرافدين",
     "slug": "RafidainFinance",
-    "version": "2.0.0",
+    "version": "2.2.0",
     "orientation": "portrait",
     "icon": "./assets/images/rafidain-logo.png",
     "scheme": "rafidainfinance",
@@ -20,13 +20,19 @@
     "ios": {
       "icon": "./assets/images/rafidain-logo.png",
       "bundleIdentifier": "com.rafidain.finance",
-      "buildNumber": "2"
+      "buildNumber": "4",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "package": "com.rafidain.finance",
-      "versionCode": 2,
+      "versionCode": 4,
       "googleServicesFile": "./google-services.json",
-      "permissions": ["REQUEST_INSTALL_PACKAGES", "POST_NOTIFICATIONS"],
+      "permissions": [
+        "REQUEST_INSTALL_PACKAGES",
+        "POST_NOTIFICATIONS"
+      ],
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/images/rafidain-logo.png",
@@ -58,7 +64,8 @@
           "icon": "./assets/images/rafidain-logo.png",
           "color": "#4F46E5"
         }
-      ]
+      ],
+      "expo-image"
     ],
     "experiments": {
       "typedRoutes": true

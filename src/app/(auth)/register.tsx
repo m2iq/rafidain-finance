@@ -38,22 +38,21 @@ export default function RegisterScreen() {
       return;
     }
 
-    if (password !== confirmPassword) {
-      setErrorMsg(ar.register.passwordMismatch);
-      return;
-    }
+
 
     setLoading(true);
     try {
-      const result = await UserRepository.register(name.trim(), phone.trim(), password);
-      if (result.success && result.user) {
-        setUser(result.user);
+      const user = await UserRepository.create({
+        name: name.trim(),
+        phone: phone.trim(),
+        password_plaintext: password
+      });
+      if (user) {
+        setUser(user);
         router.replace('/(main)');
-      } else {
-        setErrorMsg(result.error || ar.register.failed);
       }
     } catch (err: any) {
-      setErrorMsg(ar.register.failed);
+      setErrorMsg(err.message || ar.register.failed);
     } finally {
       setLoading(false);
     }

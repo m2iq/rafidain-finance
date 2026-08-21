@@ -3,6 +3,7 @@ import Constants, { ExecutionEnvironment } from 'expo-constants';
 import { Platform } from 'react-native';
 import { db } from '../database/db';
 import { DebtRepository } from '../database/repositories/DebtRepository';
+import { UserRepository } from '../database/repositories/UserRepository';
 import { supabase } from '../supabase/supabaseClient';
 
 const isExpoGo =
@@ -298,12 +299,16 @@ export class NotificationService {
     try {
       if (!userId) return;
 
+      const user = UserRepository.getById(userId);
+      const userCreatedAt = user?.created_at || new Date(0).toISOString();
+
       let sysNotifs: any[] | null = null;
 
       const { data, error } = await supabase
         .from('system_notifications')
         .select('*')
         .or(`user_id.is.null,user_id.eq.${userId}`)
+        .gte('created_at', userCreatedAt)
         .order('created_at', { ascending: false })
         .limit(30);
 
@@ -312,6 +317,7 @@ export class NotificationService {
         const { data: fallbackData, error: fallbackError } = await supabase
           .from('system_notifications')
           .select('*')
+          .gte('created_at', userCreatedAt)
           .order('created_at', { ascending: false })
           .limit(30);
         if (fallbackError) {
@@ -347,10 +353,18 @@ export class NotificationService {
   /**
    * جلب أرشيف الإشعارات من SQLite المحلي
    */
-  static getLocalNotifications(): any[] {
+  static getLocalNotifications(userId?: string): any[] {
     try {
+      let minDate = new Date(0).toISOString();
+      if (userId) {
+        const user = UserRepository.getById(userId);
+        if (user && user.created_at) {
+          minDate = user.created_at;
+        }
+      }
       return db.getAllSync(
-        `SELECT * FROM notifications ORDER BY created_at DESC LIMIT 50`
+        `SELECT * FROM notifications WHERE created_at >= ? ORDER BY created_at DESC LIMIT 50`,
+        [minDate]
       );
     } catch (e) {
       return [];
@@ -367,12 +381,29 @@ export class NotificationService {
   }
 
   /**
+   * حذف جميع الإشعارات المحلية
+   */
+  static deleteAllLocalNotifications(): void {
+    try {
+      db.runSync(`DELETE FROM notifications`);
+    } catch (e) {}
+  }
+
+  /**
    * حساب عدد الإشعارات غير المقروءة
    */
-  static getUnreadCount(): number {
+  static getUnreadCount(userId?: string): number {
     try {
+      let minDate = new Date(0).toISOString();
+      if (userId) {
+        const user = UserRepository.getById(userId);
+        if (user && user.created_at) {
+          minDate = user.created_at;
+        }
+      }
       const res = db.getFirstSync<{ count: number }>(
-        `SELECT COUNT(*) as count FROM notifications WHERE is_read = 0`
+        `SELECT COUNT(*) as count FROM notifications WHERE is_read = 0 AND created_at >= ?`,
+        [minDate]
       );
       return res?.count || 0;
     } catch (e) {

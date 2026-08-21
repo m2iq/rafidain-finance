@@ -7,8 +7,8 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { Surface, Text, useTheme } from 'react-native-paper';
-import { Bell, BellOff, ChevronLeft, Clock } from 'lucide-react-native';
+import { Surface, Text, useTheme, Dialog, Portal, Button as PaperButton } from 'react-native-paper';
+import { Bell, BellOff, ChevronLeft, Clock, Trash2 } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { NotificationService } from '../../core/notifications/notificationService';
@@ -24,6 +24,7 @@ export default function NotificationsScreen() {
 
   const [notifications, setNotifications] = useState<any[]>([]);
   const [refreshing, setRefreshing] = useState(false);
+  const [confirmClearVisible, setConfirmClearVisible] = useState(false);
 
   const loadNotifications = async () => {
     if (user?.id) {
@@ -31,7 +32,7 @@ export default function NotificationsScreen() {
     }
     // Capture the real is_read snapshot before marking everything as read,
     // so the current screen render can still show which items were unread.
-    const list = NotificationService.getLocalNotifications();
+    const list = NotificationService.getLocalNotifications(user?.id);
     setNotifications(list);
     NotificationService.markAllAsRead();
   };
@@ -51,8 +52,20 @@ export default function NotificationsScreen() {
     setRefreshing(false);
   };
 
+  const handleClearAll = () => {
+    NotificationService.deleteAllLocalNotifications();
+    setNotifications([]);
+    setConfirmClearVisible(false);
+  };
+
+  const headerRight = notifications.length > 0 ? (
+    <TouchableOpacity onPress={() => setConfirmClearVisible(true)} style={{ padding: 8 }}>
+      <Trash2 size={20} color={theme.colors.error} />
+    </TouchableOpacity>
+  ) : null;
+
   return (
-    <AppScreen title="الإشعارات التنبيهية">
+    <AppScreen title="الإشعارات التنبيهية" headerRight={headerRight}>
       <StatusBar
         barStyle={theme.dark ? 'light-content' : 'dark-content'}
         backgroundColor={theme.colors.background}
@@ -159,6 +172,21 @@ export default function NotificationsScreen() {
           </View>
         }
       />
+      
+      <Portal>
+        <Dialog visible={confirmClearVisible} onDismiss={() => setConfirmClearVisible(false)} style={{ backgroundColor: theme.colors.surface }}>
+          <Dialog.Title style={{ fontFamily: 'Cairo_700Bold', color: theme.colors.error }}>مسح الإشعارات</Dialog.Title>
+          <Dialog.Content>
+            <Text variant="bodyMedium" style={{ fontFamily: 'Cairo_400Regular' }}>
+              هل أنت متأكد من مسح جميع الإشعارات؟ لا يمكن التراجع عن هذا الإجراء.
+            </Text>
+          </Dialog.Content>
+          <Dialog.Actions>
+            <PaperButton onPress={() => setConfirmClearVisible(false)} labelStyle={{ fontFamily: 'Cairo_600SemiBold' }}>إلغاء</PaperButton>
+            <PaperButton onPress={handleClearAll} textColor={theme.colors.error} labelStyle={{ fontFamily: 'Cairo_700Bold' }}>مسح الكل</PaperButton>
+          </Dialog.Actions>
+        </Dialog>
+      </Portal>
     </AppScreen>
   );
 }

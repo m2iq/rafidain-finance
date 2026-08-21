@@ -1,6 +1,6 @@
 /**
- * قائمة المحافظات والمناطق العراقية
- * Iraqi Governorates and Districts Data
+ * قائمة المحافظات والمناطق العراقية مع الإحداثيات
+ * Iraqi Governorates and Districts Data with Coordinates
  */
 
 export interface Governorate {
@@ -8,6 +8,186 @@ export interface Governorate {
   name: string;
   districts: string[];
 }
+
+export const GOVERNORATE_COORDINATES: Record<string, { latitude: number; longitude: number }> = {
+  'بغداد': { latitude: 33.3152, longitude: 44.3661 },
+  'البصرة': { latitude: 30.5081, longitude: 47.7835 },
+  'أربيل': { latitude: 36.1911, longitude: 44.0092 },
+  'النجف الأشرف': { latitude: 31.9926, longitude: 44.3168 },
+  'كربلاء المقدسة': { latitude: 32.6160, longitude: 44.0249 },
+  'نينوى (الموصل)': { latitude: 36.3402, longitude: 43.1580 },
+  'كركوك': { latitude: 35.4666, longitude: 44.3941 },
+  'السليمانية': { latitude: 35.5558, longitude: 45.4351 },
+  'بابل (الحلة)': { latitude: 32.4833, longitude: 44.4333 },
+  'ذي قار (الناصرية)': { latitude: 31.0500, longitude: 46.2500 },
+  'الأنبار (الرمادي)': { latitude: 33.4167, longitude: 43.3000 },
+  'ديالى (بعقوبة)': { latitude: 33.7500, longitude: 44.6333 },
+  'الديوانية (القادسية)': { latitude: 31.9833, longitude: 44.9167 },
+  'المثنى (السماوة)': { latitude: 31.3167, longitude: 45.2833 },
+  'ميسان (العمارة)': { latitude: 31.8333, longitude: 47.1500 },
+  'واسط (الكوت)': { latitude: 32.5000, longitude: 45.8167 },
+  'صلاح الدين (تكريت)': { latitude: 34.6000, longitude: 43.6833 },
+  'دهوك': { latitude: 36.8667, longitude: 42.9833 },
+};
+
+/** إحداثيات دقيقة لكل منطقة داخل كل محافظة */
+export const DISTRICT_COORDINATES: Record<string, Record<string, { latitude: number; longitude: number }>> = {
+  'بغداد': {
+    'الكرادة':      { latitude: 33.3048, longitude: 44.4006 },
+    'المنصور':      { latitude: 33.3283, longitude: 44.3476 },
+    'الأعظمية':    { latitude: 33.3694, longitude: 44.3652 },
+    'الكاظمية':    { latitude: 33.3797, longitude: 44.3188 },
+    'زيونة':       { latitude: 33.3389, longitude: 44.4186 },
+    'الجادرية':    { latitude: 33.2731, longitude: 44.3783 },
+    'السيدية':     { latitude: 33.2752, longitude: 44.3270 },
+    'البياع':      { latitude: 33.2560, longitude: 44.2980 },
+    'الدورة':      { latitude: 33.2480, longitude: 44.3740 },
+    'الغزالية':    { latitude: 33.3734, longitude: 44.2886 },
+    'العامرية':    { latitude: 33.2961, longitude: 44.2680 },
+    'الشعب':       { latitude: 33.3994, longitude: 44.3905 },
+    'مدينة الصدر': { latitude: 33.3760, longitude: 44.4528 },
+    'أبو غريب':    { latitude: 33.2983, longitude: 44.1877 },
+    'المحمودية':   { latitude: 33.0733, longitude: 44.3958 },
+  },
+  'البصرة': {
+    'العشار':        { latitude: 30.5058, longitude: 47.8174 },
+    'الجزائر':       { latitude: 30.5207, longitude: 47.8364 },
+    'الجبيلة':       { latitude: 30.5450, longitude: 47.8200 },
+    'الطويسة':       { latitude: 30.5306, longitude: 47.8053 },
+    'المعقل':        { latitude: 30.5404, longitude: 47.8446 },
+    'الزبير':        { latitude: 30.3905, longitude: 47.7083 },
+    'أبي الخصيب':    { latitude: 30.4661, longitude: 47.9749 },
+    'القرنة':        { latitude: 31.0014, longitude: 47.4394 },
+    'شط العرب':      { latitude: 30.4720, longitude: 48.0163 },
+    'الفاو':         { latitude: 29.9748, longitude: 48.4747 },
+  },
+  'أربيل': {
+    'عنكاوا':     { latitude: 36.2342, longitude: 43.9988 },
+    'إسكان':      { latitude: 36.1802, longitude: 44.0123 },
+    'شورش':       { latitude: 36.1652, longitude: 44.0353 },
+    'صلاح الدين': { latitude: 36.1900, longitude: 44.0600 },
+    'شقلاوة':     { latitude: 36.4068, longitude: 44.3224 },
+    'سوران':      { latitude: 36.5895, longitude: 44.5439 },
+    'كويه':       { latitude: 36.0819, longitude: 44.6284 },
+  },
+  'النجف الأشرف': {
+    'مركز النجف':  { latitude: 31.9973, longitude: 44.3305 },
+    'الكوفة':      { latitude: 32.0340, longitude: 44.4005 },
+    'الحنانة':     { latitude: 31.9700, longitude: 44.3100 },
+    'حي الأمير':   { latitude: 31.9850, longitude: 44.3250 },
+    'حي الموظفين': { latitude: 32.0050, longitude: 44.3400 },
+    'المناذرة':    { latitude: 32.1070, longitude: 44.2748 },
+    'المشخاب':     { latitude: 31.7870, longitude: 44.2927 },
+  },
+  'كربلاء المقدسة': {
+    'مركز كربلاء':      { latitude: 32.6161, longitude: 44.0247 },
+    'حي الحسين':        { latitude: 32.6135, longitude: 44.0349 },
+    'حي العباس':        { latitude: 32.6168, longitude: 44.0313 },
+    'الهندية (طويريج)': { latitude: 32.4593, longitude: 44.1708 },
+    'عين التمر':        { latitude: 32.2000, longitude: 43.6200 },
+  },
+  'نينوى (الموصل)': {
+    'الموصل الجانب الأيسر': { latitude: 36.3389, longitude: 43.1504 },
+    'الموصل الجانب الأيمن': { latitude: 36.3286, longitude: 43.1119 },
+    'الموصل القديمة':        { latitude: 36.3435, longitude: 43.1270 },
+    'الزهور':                { latitude: 36.3600, longitude: 43.1600 },
+    'الحمدانية':             { latitude: 36.4953, longitude: 43.4844 },
+    'تلعفر':                 { latitude: 36.3736, longitude: 42.4498 },
+    'عقرة':                  { latitude: 36.7429, longitude: 43.8913 },
+    'شيخان':                 { latitude: 36.7213, longitude: 43.5714 },
+  },
+  'كركوك': {
+    'طريق بغداد': { latitude: 35.4530, longitude: 44.3796 },
+    'رحيماوة':    { latitude: 35.4900, longitude: 44.4100 },
+    'القادسية':   { latitude: 35.4700, longitude: 44.3600 },
+    'أراس':       { latitude: 35.4800, longitude: 44.4300 },
+    'الدبس':      { latitude: 35.5720, longitude: 44.1234 },
+    'الحويجة':    { latitude: 35.3574, longitude: 43.8481 },
+  },
+  'السليمانية': {
+    'سرجنار':  { latitude: 35.5540, longitude: 45.4270 },
+    'رابرين':  { latitude: 35.5800, longitude: 45.4000 },
+    'بختياري': { latitude: 35.5300, longitude: 45.4500 },
+    'جمجمال':  { latitude: 35.5278, longitude: 45.1360 },
+    'كلار':    { latitude: 34.8238, longitude: 45.3177 },
+    'رانية':   { latitude: 36.2577, longitude: 44.8895 },
+  },
+  'بابل (الحلة)': {
+    'مركز الحلة': { latitude: 32.4833, longitude: 44.4333 },
+    'حي نادر':    { latitude: 32.4730, longitude: 44.4150 },
+    'حي الثورة':  { latitude: 32.5000, longitude: 44.4200 },
+    'المحاويل':   { latitude: 32.6285, longitude: 44.4367 },
+    'المسيب':     { latitude: 32.7800, longitude: 44.2879 },
+    'الهاشمية':   { latitude: 32.4608, longitude: 44.6375 },
+    'القاسم':     { latitude: 32.3481, longitude: 44.3346 },
+  },
+  'ذي قار (الناصرية)': {
+    'مركز الناصرية': { latitude: 31.0499, longitude: 46.2575 },
+    'حي سومر':       { latitude: 31.0600, longitude: 46.2700 },
+    'حي أور':        { latitude: 31.0700, longitude: 46.2400 },
+    'الشطرة':        { latitude: 31.4135, longitude: 45.9769 },
+    'الرفاعي':       { latitude: 31.7083, longitude: 46.1167 },
+    'سوق الشيوخ':    { latitude: 30.9083, longitude: 46.4567 },
+    'الجبايش':       { latitude: 30.7667, longitude: 47.0000 },
+  },
+  'الأنبار (الرمادي)': {
+    'الرمادي': { latitude: 33.4222, longitude: 43.2981 },
+    'الفلوجة': { latitude: 33.3525, longitude: 43.7824 },
+    'هيت':     { latitude: 33.6441, longitude: 42.8235 },
+    'حديثة':   { latitude: 34.0384, longitude: 42.3892 },
+    'القائم':  { latitude: 34.3781, longitude: 41.1085 },
+    'عنة':     { latitude: 34.4642, longitude: 41.9997 },
+  },
+  'ديالى (بعقوبة)': {
+    'بعقوبة المركز': { latitude: 33.7493, longitude: 44.6495 },
+    'الخالص':        { latitude: 33.8301, longitude: 44.5385 },
+    'المقدادية':     { latitude: 33.9729, longitude: 44.9222 },
+    'خانقين':        { latitude: 34.3468, longitude: 45.3783 },
+    'بلدروز':        { latitude: 34.0316, longitude: 45.0764 },
+  },
+  'الديوانية (القادسية)': {
+    'مركز الديوانية': { latitude: 31.9847, longitude: 44.9282 },
+    'حي العروبة':     { latitude: 31.9900, longitude: 44.9150 },
+    'عفك':            { latitude: 32.0624, longitude: 45.2491 },
+    'الحمزة':         { latitude: 31.7167, longitude: 44.9667 },
+    'الشامية':        { latitude: 31.9667, longitude: 45.1000 },
+  },
+  'المثنى (السماوة)': {
+    'السماوة المركز': { latitude: 31.3167, longitude: 45.2833 },
+    'الرميثة':        { latitude: 31.5183, longitude: 45.2122 },
+    'الخضر':          { latitude: 30.9956, longitude: 45.1764 },
+    'السلمان':        { latitude: 29.8461, longitude: 45.4975 },
+  },
+  'ميسان (العمارة)': {
+    'مركز العمارة': { latitude: 31.8433, longitude: 47.1459 },
+    'حي المعلمين':  { latitude: 31.8500, longitude: 47.1350 },
+    'الميمونة':     { latitude: 31.5333, longitude: 47.0167 },
+    'علي الغربي':   { latitude: 32.4626, longitude: 47.3605 },
+    'قلعة صالح':    { latitude: 31.5173, longitude: 47.2716 },
+  },
+  'واسط (الكوت)': {
+    'مركز الكوت': { latitude: 32.4936, longitude: 45.8232 },
+    'الحي':       { latitude: 32.1667, longitude: 46.0500 },
+    'النعمانية':  { latitude: 32.5395, longitude: 45.3244 },
+    'الصويرة':    { latitude: 32.8881, longitude: 45.0008 },
+    'العزيزية':   { latitude: 32.9034, longitude: 45.0752 },
+  },
+  'صلاح الدين (تكريت)': {
+    'تكريت':      { latitude: 34.6054, longitude: 43.6793 },
+    'سامراء':     { latitude: 34.1984, longitude: 43.8737 },
+    'بلد':        { latitude: 34.0165, longitude: 43.8452 },
+    'الدجيل':     { latitude: 33.8467, longitude: 44.2439 },
+    'طوزخورماتو': { latitude: 34.8784, longitude: 44.6374 },
+    'الشرقاط':    { latitude: 35.5226, longitude: 43.2658 },
+  },
+  'دهوك': {
+    'مركز دهوك': { latitude: 36.8670, longitude: 42.9833 },
+    'زاخو':      { latitude: 37.1440, longitude: 42.6808 },
+    'سميل':      { latitude: 36.8605, longitude: 42.8349 },
+    'عمادية':    { latitude: 37.0882, longitude: 43.4875 },
+    'ئاكري':     { latitude: 36.7485, longitude: 43.5954 },
+  },
+};
 
 export const IRAQ_GOVERNORATES: Governorate[] = [
   {
