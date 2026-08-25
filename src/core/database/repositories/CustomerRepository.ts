@@ -79,14 +79,41 @@ export class CustomerRepository {
 
   static softDelete(id: string): void {
     const existing = this.getById(id);
-    const now = new Date().toISOString();
-    db.runSync(`UPDATE customers SET deleted_at = ?, updated_at = ?, version = version + 1 WHERE id = ?`, [now, now, id]);
+    if (!existing) return;
 
-    // Add to sync queue
-    db.runSync(
-      `INSERT INTO sync_queue (id, table_name, record_id, operation, created_at) VALUES (?, ?, ?, ?, ?)`,
-      [randomUUID(), 'customers', id, 'DELETE', now]
-    );
+    const now = new Date().toISOString();
+    
+    // 1. Delete the customer
+    db.runSync(`UPDATE customers SET deleted_at = ?, updated_at = ?, version = version + 1 WHERE id = ?`, [now, now, id]);
+    db.runSync(`INSERT INTO sync_queue (id, table_name, record_id, operation, created_at) VALUES (?, ?, ?, ?, ?)`, [randomUUID(), 'customers', id, 'DELETE', now]);
+
+    // 2. Find and delete related debts
+    const debts = db.getAllSync<{ id: string }>(`SELECT id FROM debts WHERE customer_id = ? AND deleted_at IS NULL`, [id]);
+    for (const debt of debts) {
+      db.runSync(`UPDATE debts SET deleted_at = ?, updated_at = ?, version = version + 1 WHERE id = ?`, [now, now, debt.id]);
+      db.runSync(`INSERT INTO sync_queue (id, table_name, record_id, operation, created_at) VALUES (?, ?, ?, ?, ?)`, [randomUUID(), 'debts', debt.id, 'DELETE', now]);
+      
+      // Delete debt items
+      const items = db.getAllSync<{ id: string }>(`SELECT id FROM debt_items WHERE debt_id = ? AND deleted_at IS NULL`, [debt.id]);
+      for (const item of items) {
+        db.runSync(`UPDATE debt_items SET deleted_at = ?, updated_at = ?, version = version + 1 WHERE id = ?`, [now, now, item.id]);
+        db.runSync(`INSERT INTO sync_queue (id, table_name, record_id, operation, created_at) VALUES (?, ?, ?, ?, ?)`, [randomUUID(), 'debt_items', item.id, 'DELETE', now]);
+      }
+    }
+
+    // 3. Find and delete related installments
+    const installments = db.getAllSync<{ id: string }>(`SELECT id FROM installments WHERE (customer_id = ? OR debt_id IN (SELECT id FROM debts WHERE customer_id = ?)) AND deleted_at IS NULL`, [id, id]);
+    for (const inst of installments) {
+      db.runSync(`UPDATE installments SET deleted_at = ?, updated_at = ?, version = version + 1 WHERE id = ?`, [now, now, inst.id]);
+      db.runSync(`INSERT INTO sync_queue (id, table_name, record_id, operation, created_at) VALUES (?, ?, ?, ?, ?)`, [randomUUID(), 'installments', inst.id, 'DELETE', now]);
+    }
+
+    // 4. Find and delete related payments
+    const payments = db.getAllSync<{ id: string }>(`SELECT id FROM payments WHERE (customer_id = ? OR debt_id IN (SELECT id FROM debts WHERE customer_id = ?)) AND deleted_at IS NULL`, [id, id]);
+    for (const payment of payments) {
+      db.runSync(`UPDATE payments SET deleted_at = ?, updated_at = ?, version = version + 1 WHERE id = ?`, [now, now, payment.id]);
+      db.runSync(`INSERT INTO sync_queue (id, table_name, record_id, operation, created_at) VALUES (?, ?, ?, ?, ?)`, [randomUUID(), 'payments', payment.id, 'DELETE', now]);
+    }
 
     if (existing?.store_id) {
       triggerBackgroundSync(existing.store_id);

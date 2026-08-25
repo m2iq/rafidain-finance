@@ -284,12 +284,46 @@ export class DebtRepository {
 
   static softDelete(id: string, storeId?: string): void {
     const now = new Date().toISOString();
+    
+    // Delete the debt
     db.runSync(`UPDATE debts SET deleted_at = ?, updated_at = ?, version = version + 1 WHERE id = ?`, [now, now, id]);
+    db.runSync(`INSERT INTO sync_queue (id, table_name, record_id, operation, created_at) VALUES (?, ?, ?, ?, ?)`, [randomUUID(), 'debts', id, 'DELETE', now]);
 
-    db.runSync(
-      `INSERT INTO sync_queue (id, table_name, record_id, operation, created_at) VALUES (?, ?, ?, ?, ?)`,
-      [randomUUID(), 'debts', id, 'DELETE', now]
-    );
+    // Delete debt items
+    const items = db.getAllSync<{ id: string }>(`SELECT id FROM debt_items WHERE debt_id = ? AND deleted_at IS NULL`, [id]);
+    for (const item of items) {
+      db.runSync(`UPDATE debt_items SET deleted_at = ?, updated_at = ?, version = version + 1 WHERE id = ?`, [now, now, item.id]);
+      db.runSync(`INSERT INTO sync_queue (id, table_name, record_id, operation, created_at) VALUES (?, ?, ?, ?, ?)`, [randomUUID(), 'debt_items', item.id, 'DELETE', now]);
+    }
+
+    // Delete installments
+    const installments = db.getAllSync<{ id: string }>(`SELECT id FROM installments WHERE debt_id = ? AND deleted_at IS NULL`, [id]);
+    for (const inst of installments) {
+      db.runSync(`UPDATE installments SET deleted_at = ?, updated_at = ?, version = version + 1 WHERE id = ?`, [now, now, inst.id]);
+      db.runSync(`INSERT INTO sync_queue (id, table_name, record_id, operation, created_at) VALUES (?, ?, ?, ?, ?)`, [randomUUID(), 'installments', inst.id, 'DELETE', now]);
+    }
+
+    // Delete payments
+    const payments = db.getAllSync<{ id: string }>(`SELECT id FROM payments WHERE debt_id = ? AND deleted_at IS NULL`, [id]);
+    for (const payment of payments) {
+      db.runSync(`UPDATE payments SET deleted_at = ?, updated_at = ?, version = version + 1 WHERE id = ?`, [now, now, payment.id]);
+      db.runSync(`INSERT INTO sync_queue (id, table_name, record_id, operation, created_at) VALUES (?, ?, ?, ?, ?)`, [randomUUID(), 'payments', payment.id, 'DELETE', now]);
+    }
+
+    triggerBackgroundSync(storeId);
+  }
+
+  static softDeleteInstallment(id: string, storeId?: string): void {
+    const now = new Date().toISOString();
+    db.runSync(`UPDATE installments SET deleted_at = ?, updated_at = ?, version = version + 1 WHERE id = ?`, [now, now, id]);
+    db.runSync(`INSERT INTO sync_queue (id, table_name, record_id, operation, created_at) VALUES (?, ?, ?, ?, ?)`, [randomUUID(), 'installments', id, 'DELETE', now]);
+
+    // Delete payments linked to this installment
+    const payments = db.getAllSync<{ id: string }>(`SELECT id FROM payments WHERE installment_id = ? AND deleted_at IS NULL`, [id]);
+    for (const payment of payments) {
+      db.runSync(`UPDATE payments SET deleted_at = ?, updated_at = ?, version = version + 1 WHERE id = ?`, [now, now, payment.id]);
+      db.runSync(`INSERT INTO sync_queue (id, table_name, record_id, operation, created_at) VALUES (?, ?, ?, ?, ?)`, [randomUUID(), 'payments', payment.id, 'DELETE', now]);
+    }
 
     triggerBackgroundSync(storeId);
   }
@@ -298,41 +332,38 @@ export class DebtRepository {
     const now = new Date().toISOString();
     
     // Find all active debts for this customer
-    const activeDebts = db.getAllSync(
-      `SELECT * FROM debts WHERE customer_id = ? AND store_id = ? AND remaining_amount > 0 AND deleted_at IS NULL`,
+    const activeDebts = db.getAllSync<{ id: string, total_amount: number }>(
+      `SELECT id, total_amount FROM debts WHERE customer_id = ? AND store_id = ? AND remaining_amount > 0 AND deleted_at IS NULL`,
       [customerId, storeId]
-    ) as Debt[];
-
-    if (activeDebts.length === 0) return;
+    );
 
     for (const debt of activeDebts) {
-      const remainingAmount = debt.remaining_amount;
-      const newPaidAmount = debt.total_amount;
-      
-      // Mark debt as paid
       db.runSync(
         `UPDATE debts SET paid_amount = ?, remaining_amount = 0, status = 'paid', updated_at = ?, version = version + 1 WHERE id = ?`,
-        [newPaidAmount, now, debt.id]
+        [debt.total_amount, now, debt.id]
       );
       
-      // Add sync queue for debt
       db.runSync(
         `INSERT INTO sync_queue (id, table_name, record_id, operation, created_at) VALUES (?, ?, ?, ?, ?)`,
         [randomUUID(), 'debts', debt.id, 'UPDATE', now]
       );
+    }
 
-      // Create a reset payment record
-      const paymentId = randomUUID();
+    // Find and update all pending installments for this customer
+    const pendingInstallments = db.getAllSync<{ id: string }>(
+      `SELECT id FROM installments WHERE customer_id = ? AND status = 'pending' AND deleted_at IS NULL`,
+      [customerId]
+    );
+
+    for (const inst of pendingInstallments) {
       db.runSync(
-        `INSERT INTO payments (id, debt_id, customer_id, store_id, amount, payment_date, type, payment_method, date, notes, created_at, updated_at, version)
-         VALUES (?, ?, ?, ?, ?, ?, 'reset', 'other', ?, 'تم تصفير الحساب بناءً على طلب المستخدم', ?, ?, 1)`,
-        [paymentId, debt.id, customerId, storeId, remainingAmount, now.substring(0, 10), now.substring(0, 10), now, now]
+        `UPDATE installments SET status = 'paid', paid_date = ?, updated_at = ?, version = version + 1 WHERE id = ?`,
+        [now.substring(0, 10), now, inst.id]
       );
-
-      // Add sync queue for payment
+      
       db.runSync(
         `INSERT INTO sync_queue (id, table_name, record_id, operation, created_at) VALUES (?, ?, ?, ?, ?)`,
-        [randomUUID(), 'payments', paymentId, 'INSERT', now]
+        [randomUUID(), 'installments', inst.id, 'UPDATE', now]
       );
     }
 

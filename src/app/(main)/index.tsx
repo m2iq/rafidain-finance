@@ -38,6 +38,7 @@ import { useCustomers } from "../../features/customers/api/useCustomers";
 import { useDebts } from "../../features/debts/api/useDebts";
 import { NotificationService } from "../../core/notifications/notificationService";
 import { runSyncWithProgress } from "../../core/supabase/syncService";
+import ReportsSummary from "../../shared/components/ReportsSummary";
 
 export default function DashboardScreen() {
   const user = useAppStore((s) => s.user);
@@ -106,7 +107,7 @@ export default function DashboardScreen() {
     0,
   );
   const debtorCustomersCount = customers.filter(
-    (c) => (c.total_debt || 0) > 0,
+    (c) => debts.some((d) => d.customer_id === c.id && d.remaining_amount !== undefined && d.remaining_amount > 0)
   ).length;
 
   const dueInstallmentsCount = debts.filter((d: any) => {
@@ -172,7 +173,7 @@ export default function DashboardScreen() {
       color: "#059669",
       bgColor: theme.dark ? "rgba(5, 150, 105, 0.25)" : "#D1FAE5",
       borderColor: theme.dark ? "#065F46" : "#A7F3D0",
-      route: "/(main)/debts",
+      route: "/(main)/reports",
     },
   ];
 
@@ -415,6 +416,9 @@ export default function DashboardScreen() {
             </View>
           </Surface>
         </Animated.View>
+
+        {/* Reports Summary */}
+        <ReportsSummary />
 
         {/* Quick Actions Shortcuts */}
         <View style={styles.quickShortcutsRow}>
@@ -781,8 +785,8 @@ const styles = StyleSheet.create({
   proCard: {
     borderRadius: 24,
     borderWidth: 1,
-    padding: 16,
-    paddingTop: 20,
+    padding: 14,
+    paddingTop: 18,
     alignItems: "center",
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.04,
@@ -790,9 +794,9 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   proImageContainer: {
-    width: 110,
-    height: 100,
-    marginBottom: 16,
+    width: 105,
+    height: 95,
+    marginBottom: 12,
     justifyContent: "center",
     alignItems: "center",
   },
@@ -803,36 +807,36 @@ const styles = StyleSheet.create({
   proContent: {
     width: "100%",
     flexDirection: "row",
-    alignItems: "center",
     justifyContent: "space-between",
+    alignItems: "center",
   },
   proTitle: {
     fontFamily: "Cairo_700Bold",
     fontSize: 13,
     flex: 1,
-    marginRight: 6,
+    marginRight: 4,
   },
   proArrowBox: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
     justifyContent: "center",
     alignItems: "center",
   },
   proBadge: {
     position: "absolute",
-    top: 12,
-    right: 12,
+    top: 10,
+    right: 10,
     backgroundColor: "#EF4444",
-    paddingHorizontal: 8,
+    paddingHorizontal: 7,
     paddingVertical: 2,
     borderRadius: 10,
     zIndex: 10,
   },
   proBadgeText: {
-    color: "#FFF",
+    color: "#FFFFFF",
+    fontSize: 11,
     fontFamily: "Cairo_700Bold",
-    fontSize: 10,
   },
   activityList: {
     gap: 10,

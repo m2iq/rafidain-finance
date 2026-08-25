@@ -25,6 +25,8 @@ export const initializeDatabase = () => {
         password_hash TEXT NOT NULL,
         role TEXT DEFAULT 'owner',
         status TEXT DEFAULT 'active',
+        whatsapp_order_message TEXT,
+        whatsapp_payment_message TEXT,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
         deleted_at TEXT,
@@ -215,6 +217,14 @@ export const initializeDatabase = () => {
           `UPDATE debts SET store_id = ? WHERE store_id IS NULL OR store_id = '' OR store_id = '00000000-0000-0000-0000-000000000000'`,
           [owner.id]
         );
+        db.runSync(
+          `UPDATE installments SET store_id = ? WHERE store_id IS NULL OR store_id = '' OR store_id = '00000000-0000-0000-0000-000000000000'`,
+          [owner.id]
+        );
+        db.runSync(
+          `UPDATE payments SET store_id = ? WHERE store_id IS NULL OR store_id = '' OR store_id = '00000000-0000-0000-0000-000000000000'`,
+          [owner.id]
+        );
       }
     } catch (error) {
       console.error('[BOOT] Legacy store_id backfill failed:', error);
@@ -259,6 +269,19 @@ export const initializeDatabase = () => {
       }
     } catch (error) {
       console.error('[BOOT] payments table migration failed:', error);
+    }
+
+    try {
+      const usersInfo = db.getAllSync<{ name: string }>(`PRAGMA table_info(users)`);
+      const cols = new Set(usersInfo.map((col) => col.name));
+      if (!cols.has('whatsapp_order_message')) {
+        db.execSync(`ALTER TABLE users ADD COLUMN whatsapp_order_message TEXT;`);
+      }
+      if (!cols.has('whatsapp_payment_message')) {
+        db.execSync(`ALTER TABLE users ADD COLUMN whatsapp_payment_message TEXT;`);
+      }
+    } catch (usersColErr) {
+      console.warn('[BOOT] Error adding whatsapp columns to users table:', usersColErr);
     }
 
     isDbInitialized = true;

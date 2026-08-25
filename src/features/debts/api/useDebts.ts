@@ -125,3 +125,33 @@ export function useResetCustomerAccount() {
     },
   });
 }
+
+export function useDeleteDebt() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ debtId, storeId }: { debtId: string; storeId?: string }) => {
+      return DebtRepository.softDelete(debtId, storeId);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['debts'] });
+      queryClient.invalidateQueries({ queryKey: ['customers'] });
+      queryClient.invalidateQueries({ queryKey: ['reports'] });
+    },
+  });
+}
+
+export function useDeleteInstallment() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ installmentId, storeId }: { installmentId: string; storeId?: string }) => {
+      return DebtRepository.softDeleteInstallment(installmentId, storeId);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['debts'] });
+      queryClient.invalidateQueries({ queryKey: ['customers'] });
+      queryClient.invalidateQueries({ queryKey: ['reports'] });
+    },
+  });
+}

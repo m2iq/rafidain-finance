@@ -13,7 +13,8 @@ export interface AppUpdate {
   created_at: string;
 }
 
-export const CURRENT_VERSION_CODE = 4; // You can increment this number on every store release
+export const CURRENT_VERSION_CODE = 5; // Increment on every store/app release
+export const CURRENT_VERSION_NAME = '2.3.0';
 
 export const checkForUpdates = async (): Promise<AppUpdate | null> => {
   try {

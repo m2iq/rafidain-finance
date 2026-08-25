@@ -190,6 +190,39 @@ export async function syncFromCloud(storeId: string): Promise<void> {
       console.warn(`[Sync] Pull failed for table: ${table}`, err);
     }
   }
+
+  // مزامنة إعدادات وقوالب رسائل الواتساب الخاصة بالمستخدم من السحابة
+  try {
+    const { data: userCloud } = await supabase
+      .from('users')
+      .select('whatsapp_order_message, whatsapp_payment_message')
+      .eq('id', storeId)
+      .maybeSingle();
+
+    if (userCloud && (userCloud.whatsapp_order_message || userCloud.whatsapp_payment_message)) {
+      const orderMsg = userCloud.whatsapp_order_message || '';
+      const payMsg = userCloud.whatsapp_payment_message || '';
+      useAppStore.getState().setWhatsappMessages(orderMsg, payMsg);
+      db.runSync(
+        `UPDATE users SET whatsapp_order_message = ?, whatsapp_payment_message = ? WHERE id = ?`,
+        [orderMsg, payMsg, storeId]
+      );
+    } else {
+      const { data: authUserData } = await supabase.auth.getUser();
+      const meta = authUserData?.user?.user_metadata;
+      if (meta?.whatsapp_order_message || meta?.whatsapp_payment_message) {
+        const orderMsg = meta.whatsapp_order_message || '';
+        const payMsg = meta.whatsapp_payment_message || '';
+        useAppStore.getState().setWhatsappMessages(orderMsg, payMsg);
+        db.runSync(
+          `UPDATE users SET whatsapp_order_message = ?, whatsapp_payment_message = ? WHERE id = ?`,
+          [orderMsg, payMsg, storeId]
+        );
+      }
+    }
+  } catch (userSyncErr) {
+    console.warn('[Sync] User settings sync warning:', userSyncErr);
+  }
 }
 
 // ============================================

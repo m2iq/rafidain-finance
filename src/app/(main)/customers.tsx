@@ -16,6 +16,7 @@ import AppButton from '../../shared/components/AppButton';
 import IraqLocationPicker from '../../shared/components/IraqLocationPicker';
 import ar from '../../shared/i18n/ar';
 import { formatCurrency } from '../../shared/utils/currency';
+import { openCustomerWhatsApp } from '../../shared/utils/whatsapp';
 import { GOVERNORATE_COORDINATES, DISTRICT_COORDINATES } from '../../shared/constants/iraqLocations';
 
 const getLeafletHtml = (lat: number, lng: number, interactive: boolean) => `
@@ -111,7 +112,7 @@ function CustomerStatsHeader({ total, active, paid }: { total: number; active: n
   );
 }
 
-const CustomerCard = React.memo(function CustomerCard({ item, onPress, onWhatsApp, onCall }: { item: any; onPress: (item: any) => void; onWhatsApp: (phone: string) => void; onCall: (phone: string) => void }) {
+const CustomerCard = React.memo(function CustomerCard({ item, onPress, onWhatsApp, onCall }: { item: any; onPress: (item: any) => void; onWhatsApp: (customer: any) => void; onCall: (phone: string) => void }) {
   const theme = useTheme();
   const hasDebt = (item.total_debt || 0) > 0;
   const isOverdue = item.status === 'overdue';
@@ -185,7 +186,7 @@ const CustomerCard = React.memo(function CustomerCard({ item, onPress, onWhatsAp
             <>
               <TouchableOpacity
                 activeOpacity={0.7}
-                onPress={() => onWhatsApp(item.phone)}
+                onPress={() => onWhatsApp(item)}
                 style={[styles.actionBtn, { backgroundColor: '#DCFCE7' }]}
               >
                 <MessageCircle size={16} color="#16A34A" />
@@ -258,16 +259,21 @@ export default function CustomersScreen() {
     }
   };
 
-  const handleWhatsAppCustomer = (custPhone: string) => {
-    if (!custPhone) return;
-    let cleanPhone = custPhone.replace(/\D/g, '');
-    if (cleanPhone.startsWith('0')) {
-      cleanPhone = '964' + cleanPhone.substring(1);
-    } else if (!cleanPhone.startsWith('964')) {
-      cleanPhone = '964' + cleanPhone;
-    }
-    const message = encodeURIComponent('السلام عليكم، نود تذكيركم بموعد القسط الخاص بكم في الرافدين المالي.');
-    Linking.openURL(`https://wa.me/${cleanPhone}?text=${message}`);
+  const customTemplateCustomer = useAppStore(s => s.whatsappOrderMessage);
+
+  const handleWhatsAppCustomer = (customerOrPhone: any) => {
+    let customer =
+      typeof customerOrPhone === 'object' && customerOrPhone !== null
+        ? customerOrPhone
+        : (customersData || []).find(
+            (c: any) => c.phone === customerOrPhone || c.id === customerOrPhone
+          ) || selectedCustomer || { phone: customerOrPhone, name: 'العميل' };
+
+    const records = (allDebts || []).filter(
+      (d: any) => d.customer_id === customer.id
+    );
+
+    openCustomerWhatsApp(customer, records, user?.name, customTemplateCustomer);
   };
 
   const handleOpenDetails = (customer: any) => {
@@ -575,7 +581,7 @@ export default function CustomersScreen() {
         }}
       >
         <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'padding'}
           style={styles.modalOverlay}
         >
           <View style={[styles.modalContent, { backgroundColor: theme.colors.surface }]}>
@@ -591,7 +597,7 @@ export default function CustomersScreen() {
               </TouchableOpacity>
             </View>
 
-            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.formContent}>
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.formContent} keyboardShouldPersistTaps="handled">
               {errorMsg ? (
                 <View style={[styles.errorBox, { backgroundColor: theme.colors.errorContainer }]}>
                   <Text style={{ color: theme.colors.onErrorContainer, fontFamily: 'Cairo_600SemiBold', fontSize: 13 }}>
@@ -727,7 +733,7 @@ export default function CustomersScreen() {
                     <>
                       <TouchableOpacity
                         activeOpacity={0.8}
-                        onPress={() => handleWhatsAppCustomer(selectedCustomer.phone)}
+                        onPress={() => handleWhatsAppCustomer(selectedCustomer)}
                         style={[styles.contactBarBtn, { backgroundColor: '#DCFCE7' }]}
                       >
                         <MessageCircle size={18} color="#16A34A" />
@@ -1050,6 +1056,7 @@ const styles = StyleSheet.create({
     borderBottomColor: 'rgba(148, 163, 184, 0.2)',
   },
   modalTitleRow: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
@@ -1058,7 +1065,11 @@ const styles = StyleSheet.create({
     fontFamily: 'Cairo_700Bold',
   },
   closeBtn: {
-    padding: 6,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   formContent: {
     paddingVertical: 16,

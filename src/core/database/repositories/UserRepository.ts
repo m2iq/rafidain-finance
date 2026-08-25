@@ -12,6 +12,8 @@ export interface User {
   password_hash: string;
   role: 'owner' | 'manager' | 'cashier' | 'employee';
   status: 'active' | 'inactive';
+  whatsapp_order_message?: string | null;
+  whatsapp_payment_message?: string | null;
   created_at: string;
   updated_at: string;
   deleted_at: string | null;
@@ -196,6 +198,14 @@ export class UserRepository {
     // 1. التحقق محلياً من SQLite
     if (localUser) {
       if (localUser.password_hash === hash) {
+        // إذا كان هناك قوالب محفوظة محلياً نقوم بتعيينها
+        if (localUser.whatsapp_order_message || localUser.whatsapp_payment_message) {
+          useAppStore.getState().setWhatsappMessages(
+            localUser.whatsapp_order_message || '',
+            localUser.whatsapp_payment_message || ''
+          );
+        }
+
         // كلمة المرور صحيحة محلياً
         try {
           const fakeEmail = `${cleanPhone.replace(/\D/g, '')}@rafidain.local`;
@@ -207,6 +217,18 @@ export class UserRepository {
           if (!authError && authData.user) {
             console.log('[UserRepository] Cloud session established for local user ✓');
             useAppStore.getState().setCloudMode(true);
+
+            // مزامنة قوالب الواتساب من السحابة إذا وُجدت
+            const metaOrder = (authData.user.user_metadata?.whatsapp_order_message as string) || '';
+            const metaPayment = (authData.user.user_metadata?.whatsapp_payment_message as string) || '';
+            if (metaOrder || metaPayment) {
+              useAppStore.getState().setWhatsappMessages(metaOrder, metaPayment);
+              db.runSync(
+                `UPDATE users SET whatsapp_order_message = ?, whatsapp_payment_message = ? WHERE id = ?`,
+                [metaOrder, metaPayment, localUser.id]
+              );
+            }
+
             syncFromCloud(localUser.id).catch((err) =>
               console.warn('[UserRepository] Cloud sync background error:', err)
             );
@@ -252,6 +274,13 @@ export class UserRepository {
         }
 
         const now = new Date().toISOString();
+        const orderMsg = cloudUser?.whatsapp_order_message || (authData.user.user_metadata?.whatsapp_order_message as string) || '';
+        const paymentMsg = cloudUser?.whatsapp_payment_message || (authData.user.user_metadata?.whatsapp_payment_message as string) || '';
+
+        if (orderMsg || paymentMsg) {
+          useAppStore.getState().setWhatsappMessages(orderMsg, paymentMsg);
+        }
+
         const userToSave: User = {
           id: authUserId,
           name: cloudUser?.name || (authData.user.user_metadata?.name as string) || 'تاجر',
@@ -259,6 +288,8 @@ export class UserRepository {
           password_hash: cloudUser?.password_hash || hash,
           role: cloudUser?.role || 'owner',
           status: cloudUser?.status || 'active',
+          whatsapp_order_message: orderMsg || null,
+          whatsapp_payment_message: paymentMsg || null,
           created_at: cloudUser?.created_at || now,
           updated_at: cloudUser?.updated_at || now,
           deleted_at: cloudUser?.deleted_at || null,
@@ -267,8 +298,8 @@ export class UserRepository {
 
         db.runSync(
           `INSERT OR REPLACE INTO users 
-             (id, name, phone, password_hash, role, status, created_at, updated_at, deleted_at, version)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+             (id, name, phone, password_hash, role, status, whatsapp_order_message, whatsapp_payment_message, created_at, updated_at, deleted_at, version)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
             userToSave.id,
             userToSave.name,
@@ -276,6 +307,8 @@ export class UserRepository {
             userToSave.password_hash,
             userToSave.role,
             userToSave.status,
+            userToSave.whatsapp_order_message || null,
+            userToSave.whatsapp_payment_message || null,
             userToSave.created_at,
             userToSave.updated_at,
             userToSave.deleted_at,
@@ -308,6 +341,13 @@ export class UserRepository {
       if (cloudUser && !queryError) {
         if (cloudUser.password_hash === hash) {
           console.log('[UserRepository] Direct DB password match for user:', cloudUser.id);
+          const orderMsg = cloudUser.whatsapp_order_message || '';
+          const paymentMsg = cloudUser.whatsapp_payment_message || '';
+
+          if (orderMsg || paymentMsg) {
+            useAppStore.getState().setWhatsappMessages(orderMsg, paymentMsg);
+          }
+
           const userToSave: User = {
             id: cloudUser.id,
             name: cloudUser.name || 'تاجر',
@@ -315,6 +355,8 @@ export class UserRepository {
             password_hash: cloudUser.password_hash,
             role: cloudUser.role || 'owner',
             status: cloudUser.status || 'active',
+            whatsapp_order_message: orderMsg || null,
+            whatsapp_payment_message: paymentMsg || null,
             created_at: cloudUser.created_at || new Date().toISOString(),
             updated_at: cloudUser.updated_at || new Date().toISOString(),
             deleted_at: cloudUser.deleted_at || null,
@@ -323,8 +365,8 @@ export class UserRepository {
 
           db.runSync(
             `INSERT OR REPLACE INTO users 
-               (id, name, phone, password_hash, role, status, created_at, updated_at, deleted_at, version)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+               (id, name, phone, password_hash, role, status, whatsapp_order_message, whatsapp_payment_message, created_at, updated_at, deleted_at, version)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             [
               userToSave.id,
               userToSave.name,
@@ -332,6 +374,8 @@ export class UserRepository {
               userToSave.password_hash,
               userToSave.role,
               userToSave.status,
+              userToSave.whatsapp_order_message || null,
+              userToSave.whatsapp_payment_message || null,
               userToSave.created_at,
               userToSave.updated_at,
               userToSave.deleted_at,
@@ -430,6 +474,74 @@ export class UserRepository {
       await supabase.from('users').update({ name, phone, updated_at: now }).eq('id', userId);
     } catch (err) {
       console.warn('[UserRepository] Cloud profile update skipped/failed:', err);
+    }
+  }
+
+  /**
+   * حفظ قوالب رسائل الواتساب سحابياً ومحلياً
+   */
+  static async saveWhatsappTemplates(
+    userId: string,
+    orderMessage: string,
+    paymentMessage: string
+  ): Promise<void> {
+    const now = new Date().toISOString();
+
+    // 1. التحديث محلياً في SQLite
+    try {
+      db.runSync(
+        `UPDATE users SET whatsapp_order_message = ?, whatsapp_payment_message = ?, updated_at = ?, version = version + 1 WHERE id = ?`,
+        [orderMessage, paymentMessage, now, userId]
+      );
+
+      // إضافة لطابور المزامنة
+      db.runSync(
+        `INSERT OR IGNORE INTO sync_queue (id, table_name, record_id, operation, created_at)
+         VALUES (?, 'users', ?, 'UPDATE', ?)`,
+        [randomUUID(), userId, now]
+      );
+    } catch (dbErr) {
+      console.warn('[UserRepository] Local save whatsapp templates error:', dbErr);
+    }
+
+    // 2. تحديث حالة Zustand على مستوى التطبيق
+    useAppStore.getState().setWhatsappMessages(orderMessage, paymentMessage);
+
+    // 3. الحفظ في Supabase Auth User Metadata (مضمون العمل دائماً للمستخدمين المسجلين)
+    try {
+      const { error: authErr } = await supabase.auth.updateUser({
+        data: {
+          whatsapp_order_message: orderMessage,
+          whatsapp_payment_message: paymentMessage,
+        },
+      });
+      if (authErr) {
+        console.warn('[UserRepository] Supabase Auth metadata update warning:', authErr.message);
+      } else {
+        console.log('[UserRepository] WhatsApp templates saved to Supabase Auth metadata ✓');
+      }
+    } catch (authErr) {
+      console.warn('[UserRepository] Supabase Auth metadata update exception:', authErr);
+    }
+
+    // 4. الحفظ في جدول users بالسحابة (في حال كانت الأعمدة مضافة)
+    try {
+      const { error: cloudErr } = await supabase
+        .from('users')
+        .update({
+          whatsapp_order_message: orderMessage,
+          whatsapp_payment_message: paymentMessage,
+          updated_at: now,
+        })
+        .eq('id', userId);
+
+      if (cloudErr) {
+        console.warn('[UserRepository] Supabase public.users update warning:', cloudErr.message);
+      } else {
+        console.log('[UserRepository] WhatsApp templates saved to Supabase public.users ✓');
+      }
+    } catch (cloudErr) {
+      console.warn('[UserRepository] Cloud table update exception:', cloudErr);
     }
   }
 }

@@ -15,7 +15,8 @@ import {
   Share2,
   UserCheck,
   UserPlus,
-  X
+  X,
+  Trash2
 } from "lucide-react-native";
 import { memo, useState } from "react";
 import {
@@ -30,6 +31,7 @@ import {
   StyleSheet,
   TouchableOpacity,
   View,
+  Alert,
 } from "react-native";
 import {
   Avatar,
@@ -56,12 +58,15 @@ import {
   usePayDebt,
   useAddDebtItem,
   useDebtItems,
+  useDeleteDebt,
+  useDeleteInstallment,
 } from "../../features/debts/api/useDebts";
 import { runSync } from "../../core/supabase/syncService";
 import AppButton from "../../shared/components/AppButton";
 import AppInput from "../../shared/components/AppInput";
 import ar from "../../shared/i18n/ar";
 import { formatCurrency, formatDateTime, formatDateOnly } from "../../shared/utils/currency";
+import { generateDebtMessage, formatIraqiPhone } from "../../shared/utils/whatsapp";
 
 function DebtSummaryHeader({
   totalDebts,
@@ -145,11 +150,13 @@ const DebtCard = memo(function DebtCard({
   onPay,
   onViewHistory,
   onWhatsApp,
+  onDelete,
 }: {
   item: any;
   onPay: (item: any) => void;
   onViewHistory: (item: any) => void;
   onWhatsApp: (item: any) => void;
+  onDelete?: (item: any) => void;
 }) {
   const theme = useTheme();
   const totalAmount = item.total_amount || item.totalAmount || 0;
@@ -401,6 +408,19 @@ const DebtCard = memo(function DebtCard({
               </Text>
             </TouchableOpacity>
           )}
+
+          {onDelete && (
+            <TouchableOpacity
+              activeOpacity={0.7}
+              onPress={() => onDelete(item)}
+              style={[
+                styles.historyButton,
+                { backgroundColor: theme.dark ? "#4C0519" : "#FEE2E2", marginLeft: 8 },
+              ]}
+            >
+              <Trash2 size={14} color="#EF4444" />
+            </TouchableOpacity>
+          )}
         </View>
       </TouchableOpacity>
     </Animated.View>
@@ -411,6 +431,7 @@ export default function DebtsScreen() {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
   const user = useAppStore((s) => s.user);
+  const customTemplateDebt = useAppStore((s) => s.whatsappPaymentMessage);
 
   const { data: dbCustomers = [] } = useCustomers();
   const { data: dbDebts = [], refetch, isRefetching } = useDebts();
@@ -418,6 +439,8 @@ export default function DebtsScreen() {
   const createDebtMutation = useCreateDebt();
   const addDebtItemMutation = useAddDebtItem();
   const payDebtMutation = usePayDebt();
+  const deleteDebtMutation = useDeleteDebt();
+  const deleteInstallmentMutation = useDeleteInstallment();
 
   const [filter, setFilter] = useState<"all" | "active" | "overdue" | "paid">(
     "all",
@@ -623,6 +646,24 @@ export default function DebtsScreen() {
     }
   };
 
+  const handleDelete = (item: any) => {
+    Alert.alert(
+      "حذف السجل",
+      "هل أنت متأكد من حذف هذا السجل بشكل نهائي؟",
+      [
+        { text: "إلغاء", style: "cancel" },
+        { 
+          text: "حذف", 
+          style: "destructive",
+          onPress: () => {
+            // Both debts and installment plans are stored in the debts table
+            deleteDebtMutation.mutate({ debtId: item.id });
+          }
+        }
+      ]
+    );
+  };
+
   const handleOpenPay = (debt: any) => {
     setSelectedDebt(debt);
     const rem =
@@ -674,21 +715,10 @@ export default function DebtsScreen() {
       return;
     }
     
-    const totalAmount = item.total_amount || item.totalAmount || 0;
-    const paidAmount = item.paid_amount || item.paidAmount || 0;
-    const remaining = item.remaining_amount !== undefined ? item.remaining_amount : Math.max(0, totalAmount - paidAmount);
+    const text = generateDebtMessage(item, user?.name, customTemplateDebt);
+    const cleanPhone = formatIraqiPhone(item.customerPhone);
     
-    const isInstallment = item.type === 'installment';
-    const text = isInstallment
-      ? `مرحباً، نود تذكيركم بتسديد القسط المستحق من: ${item.title}.\nإجمالي المبلغ: ${formatCurrency(totalAmount)}\nالمتبقي: ${formatCurrency(remaining)}\nيرجى التسديد في أقرب وقت. شكراً لكم.`
-      : `مرحباً، لديك دفعة مستحقة لدين: ${item.title}.\nإجمالي الدين: ${formatCurrency(totalAmount)}\nالمتبقي: ${formatCurrency(remaining)}\nيرجى التسديد في أقرب وقت. شكراً لكم.`;
-      
-    let phone = item.customerPhone.replace(/[^0-9]/g, '');
-    if (phone.startsWith('0')) {
-      phone = '964' + phone.substring(1);
-    }
-    
-    Linking.openURL(`https://wa.me/${phone}?text=${encodeURIComponent(text)}`).catch(() => {
+    Linking.openURL(`https://wa.me/${cleanPhone}?text=${encodeURIComponent(text)}`).catch(() => {
       alert("تعذر فتح واتساب، يرجى التأكد من تثبيت التطبيق.");
     });
   };
@@ -887,6 +917,7 @@ export default function DebtsScreen() {
             onPay={handleOpenPay}
             onViewHistory={handleOpenHistory}
             onWhatsApp={handleWhatsApp}
+            onDelete={handleDelete}
           />
         )}
         keyExtractor={(item) => item.id}
@@ -946,7 +977,7 @@ export default function DebtsScreen() {
         onRequestClose={() => setAddModalVisible(false)}
       >
         <KeyboardAvoidingView
-          behavior={Platform.OS === "ios" ? "padding" : undefined}
+          behavior={Platform.OS === "ios" ? "padding" : "padding"}
           style={styles.modalOverlay}
         >
           <View
@@ -976,6 +1007,7 @@ export default function DebtsScreen() {
             <ScrollView
               showsVerticalScrollIndicator={false}
               contentContainerStyle={styles.formContent}
+              keyboardShouldPersistTaps="handled"
             >
               {formError ? (
                 <View
@@ -1106,7 +1138,7 @@ export default function DebtsScreen() {
         onRequestClose={() => setAddInstallmentModalVisible(false)}
       >
         <KeyboardAvoidingView
-          behavior={Platform.OS === "ios" ? "padding" : undefined}
+          behavior={Platform.OS === "ios" ? "padding" : "padding"}
           style={styles.modalOverlay}
         >
           <View
@@ -1136,6 +1168,7 @@ export default function DebtsScreen() {
             <ScrollView
               showsVerticalScrollIndicator={false}
               contentContainerStyle={styles.formContent}
+              keyboardShouldPersistTaps="handled"
             >
               {formError ? (
                 <View
@@ -1432,7 +1465,7 @@ export default function DebtsScreen() {
         onRequestClose={() => setQuickAddCustVisible(false)}
       >
         <KeyboardAvoidingView
-          behavior={Platform.OS === "ios" ? "padding" : undefined}
+          behavior={Platform.OS === "ios" ? "padding" : "padding"}
           style={styles.modalOverlayCenter}
         >
           <View
@@ -1516,7 +1549,7 @@ export default function DebtsScreen() {
         onRequestClose={() => setPayModalVisible(false)}
       >
         <KeyboardAvoidingView
-          behavior={Platform.OS === "ios" ? "padding" : undefined}
+          behavior={Platform.OS === "ios" ? "padding" : "padding"}
           style={styles.modalOverlayCenter}
         >
           <View
@@ -1801,20 +1834,25 @@ function DebtPaymentHistoryModal({
           <View style={styles.modalHeader}>
             <View style={styles.modalTitleRow}>
               <Receipt size={22} color={theme.colors.primary} />
-              <View style={{ flex: 1, paddingRight: 8 }}>
+              <View style={{ flex: 1, marginHorizontal: 8 }}>
                 <Text
                   variant="titleMedium"
                   style={[styles.modalTitle, { color: theme.colors.onSurface }]}
+                  numberOfLines={1}
                 >
                   سجل التسديدات والتفاصيل
                 </Text>
-                <Text variant="bodySmall" style={{ color: theme.colors.outline, marginTop: 2 }}>
+                <Text variant="bodySmall" style={{ color: theme.colors.outline, marginTop: 2 }} numberOfLines={1}>
                   {debt.customerName} • {debt.title}
                 </Text>
               </View>
             </View>
-            <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
-              <X size={20} color={theme.colors.outline} />
+            <TouchableOpacity
+              onPress={onClose}
+              style={[styles.closeBtn, { backgroundColor: theme.dark ? '#1E293B' : '#F1F5F9' }]}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              <X size={18} color={theme.colors.outline} />
             </TouchableOpacity>
           </View>
 
@@ -2336,6 +2374,7 @@ const styles = StyleSheet.create({
     borderBottomColor: "rgba(148, 163, 184, 0.2)",
   },
   modalTitleRow: {
+    flex: 1,
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
@@ -2344,7 +2383,11 @@ const styles = StyleSheet.create({
     fontFamily: "Cairo_700Bold",
   },
   closeBtn: {
-    padding: 6,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: "center",
+    justifyContent: "center",
   },
   formContent: {
     paddingVertical: 16,

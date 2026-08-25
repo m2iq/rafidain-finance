@@ -99,6 +99,10 @@ export default function MainLayout() {
           name="notifications"
           options={{ href: null, headerShown: false, tabBarItemStyle: { display: 'none' } }}
         />
+        <Tabs.Screen
+          name="reports"
+          options={{ href: null, headerShown: false, tabBarItemStyle: { display: 'none' } }}
+        />
       </Tabs>
     </>
   );

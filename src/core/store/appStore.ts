@@ -17,6 +17,9 @@ interface AppState {
   _hasHydrated: boolean;
   hasActiveSubscription: boolean;
   isDatabaseReady: boolean;
+  // WhatsApp Messages
+  whatsappOrderMessage: string;
+  whatsappPaymentMessage: string;
   // Auth
   setUser: (user: AppUser | null) => void;
   clearUser: () => void;
@@ -34,6 +37,8 @@ interface AppState {
   setHasHydrated: (val: boolean) => void;
   // Database
   setDatabaseReady: (val: boolean) => void;
+  // WhatsApp
+  setWhatsappMessages: (order: string, payment: string) => void;
 }
 
 export const useAppStore = create<AppState>()(
@@ -46,6 +51,8 @@ export const useAppStore = create<AppState>()(
       _hasHydrated: false,
       hasActiveSubscription: false,
       isDatabaseReady: false,
+      whatsappOrderMessage: '',
+      whatsappPaymentMessage: '',
       setUser: (user) => set({ user }),
       clearUser: () => set({ user: null }),
       toggleDarkMode: () => set((state) => ({ isDarkMode: !state.isDarkMode })),
@@ -56,6 +63,7 @@ export const useAppStore = create<AppState>()(
       setSubscription: (hasActiveSubscription) => set({ hasActiveSubscription }),
       setHasHydrated: (val) => set({ _hasHydrated: val }),
       setDatabaseReady: (val) => set({ isDatabaseReady: val }),
+      setWhatsappMessages: (whatsappOrderMessage, whatsappPaymentMessage) => set({ whatsappOrderMessage, whatsappPaymentMessage }),
     }),
     {
       name: 'app-storage',
@@ -67,6 +75,8 @@ export const useAppStore = create<AppState>()(
         notificationsEnabled: state.notificationsEnabled,
         user: state.user,
         hasActiveSubscription: state.hasActiveSubscription,
+        whatsappOrderMessage: state.whatsappOrderMessage,
+        whatsappPaymentMessage: state.whatsappPaymentMessage,
       }),
       onRehydrateStorage: () => (state) => {
         console.log('[STORE] Zustand hydration finished, state exists:', !!state);

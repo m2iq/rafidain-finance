@@ -1,19 +1,21 @@
 import { useRouter } from 'expo-router';
-import { Bell, ChevronLeft, CreditCard, Globe, HelpCircle, Lock, LogOut, Moon, Shield, User, X } from 'lucide-react-native';
+import { Bell, ChevronLeft, CreditCard, Globe, HelpCircle, Lock, LogOut, Moon, Shield, Smartphone, User, X, MessageSquare, MessageCircle } from 'lucide-react-native';
 import React from 'react';
 import { Alert, KeyboardAvoidingView, Modal, Platform, ScrollView, StatusBar, StyleSheet, TouchableOpacity, View } from 'react-native';
-import { Avatar, Divider, Switch, Text, useTheme } from 'react-native-paper';
+import { Avatar, Divider, Switch, Text, useTheme, TextInput as PaperTextInput } from 'react-native-paper';
 import Animated, { FadeIn } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useMutation } from '@tanstack/react-query';
 import { useAppStore } from '../../core/store/appStore';
 import { checkLiveSubscription, runSyncWithProgress, SyncProgress } from '../../core/supabase/syncService';
 import { UserRepository } from '../../core/database/repositories/UserRepository';
+import { CURRENT_VERSION_NAME, CURRENT_VERSION_CODE, checkForUpdates } from '../../core/updates/updateService';
 import SyncProgressModal from '../../shared/components/SyncProgressModal';
 import AppInput from '../../shared/components/AppInput';
 import AppButton from '../../shared/components/AppButton';
 import ar from '../../shared/i18n/ar';
 import { NotificationService } from '../../core/notifications/notificationService';
+import { DEFAULT_CUSTOMER_MESSAGE_TEMPLATE, DEFAULT_DEBT_MESSAGE_TEMPLATE } from '../../shared/utils/whatsapp';
 
 function SettingRow({
   title, description, Icon, iconBg, iconColor, right, onPress, danger,
@@ -93,6 +95,9 @@ export default function SettingsScreen() {
   const setUser = useAppStore((s) => s.setUser);
   const notif = useAppStore((s) => s.notificationsEnabled);
   const setNotif = useAppStore((s) => s.setNotificationsEnabled);
+  const whatsappOrderMessage = useAppStore((s) => s.whatsappOrderMessage);
+  const whatsappPaymentMessage = useAppStore((s) => s.whatsappPaymentMessage);
+  const setWhatsappMessages = useAppStore((s) => s.setWhatsappMessages);
 
   const handleToggleNotifications = async (val: boolean) => {
     setNotif(val);
@@ -112,6 +117,103 @@ export default function SettingsScreen() {
   const [editName, setEditName] = React.useState(user?.name || '');
   const [editPhone, setEditPhone] = React.useState(user?.phone || '');
   const [editError, setEditError] = React.useState('');
+
+  const [whatsappCustomerModal, setWhatsappCustomerModal] = React.useState(false);
+  const [whatsappCustomerText, setWhatsappCustomerText] = React.useState('');
+  const [whatsappDebtModal, setWhatsappDebtModal] = React.useState(false);
+  const [whatsappDebtText, setWhatsappDebtText] = React.useState('');
+  const [savingWhatsappCustomer, setSavingWhatsappCustomer] = React.useState(false);
+  const [savingWhatsappDebt, setSavingWhatsappDebt] = React.useState(false);
+
+  const handleSaveCustomerWhatsapp = async () => {
+    setSavingWhatsappCustomer(true);
+    try {
+      if (user?.id) {
+        await UserRepository.saveWhatsappTemplates(
+          user.id,
+          whatsappCustomerText,
+          whatsappPaymentMessage
+        );
+      } else {
+        setWhatsappMessages(whatsappCustomerText, whatsappPaymentMessage);
+      }
+      setWhatsappCustomerModal(false);
+      Alert.alert('تم الحفظ ✓', 'تم حفظ قالب رسالة العملاء سحابياً ومحلياً بنجاح.');
+    } catch (err: any) {
+      setWhatsappMessages(whatsappCustomerText, whatsappPaymentMessage);
+      setWhatsappCustomerModal(false);
+      Alert.alert('تم الحفظ محلياً', 'تم حفظ القالب محلياً على جهازك.');
+    } finally {
+      setSavingWhatsappCustomer(false);
+    }
+  };
+
+  const handleResetCustomerWhatsapp = async () => {
+    setWhatsappCustomerText(DEFAULT_CUSTOMER_MESSAGE_TEMPLATE);
+    setSavingWhatsappCustomer(true);
+    try {
+      if (user?.id) {
+        await UserRepository.saveWhatsappTemplates(
+          user.id,
+          DEFAULT_CUSTOMER_MESSAGE_TEMPLATE,
+          whatsappPaymentMessage
+        );
+      } else {
+        setWhatsappMessages(DEFAULT_CUSTOMER_MESSAGE_TEMPLATE, whatsappPaymentMessage);
+      }
+      Alert.alert('تمت الاستعادة ✓', 'تمت استعادة الرسالة الأصلية وحفظها سحابياً.');
+    } catch (err: any) {
+      setWhatsappMessages(DEFAULT_CUSTOMER_MESSAGE_TEMPLATE, whatsappPaymentMessage);
+      Alert.alert('تمت الاستعادة', 'تمت استعادة الرسالة الأصلية محلياً.');
+    } finally {
+      setSavingWhatsappCustomer(false);
+    }
+  };
+
+  const handleSaveDebtWhatsapp = async () => {
+    setSavingWhatsappDebt(true);
+    try {
+      if (user?.id) {
+        await UserRepository.saveWhatsappTemplates(
+          user.id,
+          whatsappOrderMessage,
+          whatsappDebtText
+        );
+      } else {
+        setWhatsappMessages(whatsappOrderMessage, whatsappDebtText);
+      }
+      setWhatsappDebtModal(false);
+      Alert.alert('تم الحفظ ✓', 'تم حفظ قالب رسالة الديون/الأقساط سحابياً ومحلياً بنجاح.');
+    } catch (err: any) {
+      setWhatsappMessages(whatsappOrderMessage, whatsappDebtText);
+      setWhatsappDebtModal(false);
+      Alert.alert('تم الحفظ محلياً', 'تم حفظ القالب محلياً على جهازك.');
+    } finally {
+      setSavingWhatsappDebt(false);
+    }
+  };
+
+  const handleResetDebtWhatsapp = async () => {
+    setWhatsappDebtText(DEFAULT_DEBT_MESSAGE_TEMPLATE);
+    setSavingWhatsappDebt(true);
+    try {
+      if (user?.id) {
+        await UserRepository.saveWhatsappTemplates(
+          user.id,
+          whatsappOrderMessage,
+          DEFAULT_DEBT_MESSAGE_TEMPLATE
+        );
+      } else {
+        setWhatsappMessages(whatsappOrderMessage, DEFAULT_DEBT_MESSAGE_TEMPLATE);
+      }
+      Alert.alert('تمت الاستعادة ✓', 'تمت استعادة الرسالة الأصلية وحفظها سحابياً.');
+    } catch (err: any) {
+      setWhatsappMessages(whatsappOrderMessage, DEFAULT_DEBT_MESSAGE_TEMPLATE);
+      Alert.alert('تمت الاستعادة', 'تمت استعادة الرسالة الأصلية محلياً.');
+    } finally {
+      setSavingWhatsappDebt(false);
+    }
+  };
 
   const updateProfileMutation = useMutation({
     mutationFn: async () => {
@@ -320,6 +422,54 @@ export default function SettingsScreen() {
         </Section>
       </Animated.View>
 
+      {/* Whatsapp Messages Section */}
+      <Animated.View>
+        <Section title="تخصيص الرسائل">
+          {hasActiveSubscription ? (
+            <>
+              <SettingRow
+                title="تعديل رسالة العملاء"
+                description="تخصيص نص رسالة الواتساب لكشف الحساب"
+                Icon={MessageSquare}
+                iconBg={theme.colors.primaryContainer}
+                iconColor={theme.colors.primary}
+                onPress={() => {
+                  setWhatsappCustomerText(whatsappOrderMessage || DEFAULT_CUSTOMER_MESSAGE_TEMPLATE);
+                  setWhatsappCustomerModal(true);
+                }}
+              />
+              <Divider style={{ backgroundColor: theme.colors.outlineVariant }} />
+              <SettingRow
+                title="تعديل رسالة الديون"
+                description="تخصيص نص الإشعار بسداد الديون الفردية"
+                Icon={MessageCircle}
+                iconBg={theme.colors.secondaryContainer}
+                iconColor={theme.colors.secondary}
+                onPress={() => {
+                  setWhatsappDebtText(whatsappPaymentMessage || DEFAULT_DEBT_MESSAGE_TEMPLATE);
+                  setWhatsappDebtModal(true);
+                }}
+              />
+            </>
+          ) : (
+            <View style={{ padding: 16, alignItems: 'center' }}>
+              <View style={[styles.lockedBadge, { backgroundColor: theme.dark ? '#2D1B1B' : '#FEF2F2', borderColor: theme.colors.error + '40' }]}>
+                <Lock size={14} color={theme.colors.error} />
+                <Text style={{ color: theme.colors.error, fontFamily: 'Cairo_700Bold', marginLeft: 4 }}>
+                  ميزة مدفوعة
+                </Text>
+              </View>
+              <Text style={{ color: theme.colors.outline, textAlign: 'center', marginTop: 12, fontFamily: 'Cairo_600SemiBold' }}>
+                اشترك في الباقة السحابية لتخصيص رسائل الواتساب
+              </Text>
+              <View style={{ marginTop: 12, width: '100%' }}>
+                <AppButton label="ترقية الباقة الآن" onPress={() => router.push('/(main)/subscription')} />
+              </View>
+            </View>
+          )}
+        </Section>
+      </Animated.View>
+
       <Animated.View>
         <Section title={ar.settings.security}>
           <SettingRow
@@ -334,6 +484,32 @@ export default function SettingsScreen() {
             iconBg={theme.colors.tertiaryContainer}
             iconColor={theme.colors.tertiary}
             onPress={() => router.push('/(main)/help-center')}
+          />
+          <Divider style={{ backgroundColor: theme.colors.outlineVariant }} />
+          <SettingRow
+            title="التحقق من التحديثات"
+            description={`الإصدار الحالي: v${CURRENT_VERSION_NAME}`}
+            Icon={Smartphone}
+            iconBg={theme.colors.primaryContainer}
+            iconColor={theme.colors.primary}
+            onPress={async () => {
+              try {
+                const latest = await checkForUpdates();
+                if (latest) {
+                  Alert.alert(
+                    'يتوفر تحديث جديد 🎉',
+                    `الإصدار: v${latest.version} (بناء ${latest.version_code})\n\nما الجديد:\n${latest.release_notes || 'تحسينات عامة وإصلاحات في الأداء.'}`
+                  );
+                } else {
+                  Alert.alert(
+                    'أنت على أحدث إصدار ✓',
+                    `تطبيقك محدث بالكامل للإصدار v${CURRENT_VERSION_NAME} (بناء ${CURRENT_VERSION_CODE}).`
+                  );
+                }
+              } catch (e: any) {
+                Alert.alert('تنبيه', 'تعذر التحقق من التحديثات حالياً.');
+              }
+            }}
           />
         </Section>
       </Animated.View>
@@ -357,6 +533,13 @@ export default function SettingsScreen() {
           />
         </Section>
       </Animated.View>
+
+      {/* App Version Footer */}
+      <View style={{ alignItems: 'center', marginVertical: 8 }}>
+        <Text variant="bodySmall" style={{ color: theme.colors.outline, fontFamily: 'Cairo_600SemiBold' }}>
+          ديون وأقساط الرافدين • الإصدار {CURRENT_VERSION_NAME} (بناء {CURRENT_VERSION_CODE})
+        </Text>
+      </View>
 
       <SyncProgressModal
         visible={syncModalVisible}
@@ -412,6 +595,97 @@ export default function SettingsScreen() {
           </View>
         </KeyboardAvoidingView>
       </Modal>
+
+      {/* Modal for Customer WhatsApp Template */}
+      <Modal visible={whatsappCustomerModal} animationType="slide" transparent onRequestClose={() => setWhatsappCustomerModal(false)}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.editModalOverlay}>
+          <View style={[styles.editModalCard, { backgroundColor: theme.colors.surface, maxHeight: '85%' }]}>
+            <View style={styles.editModalHeader}>
+              <Text variant="titleMedium" style={{ color: theme.colors.onSurface, fontFamily: 'Cairo_700Bold' }}>تعديل رسالة العملاء</Text>
+              <TouchableOpacity onPress={() => setWhatsappCustomerModal(false)} style={{ padding: 6 }}>
+                <X size={20} color={theme.colors.outline} />
+              </TouchableOpacity>
+            </View>
+            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+              <Text style={{ color: theme.colors.outline, marginBottom: 12, fontSize: 13, fontFamily: 'Cairo_600SemiBold', textAlign: 'left' }}>
+                المتغيرات المتاحة: {`{اسم_العميل}`}, {`{تفاصيل_الحساب}`}, {`{متبقي_الديون}`}, {`{متبقي_الأقساط}`}, {`{المجموع_الكلي}`}, {`{رسالة_السداد}`}, {`{اسم_المتجر}`}
+              </Text>
+              <PaperTextInput
+                mode="outlined"
+                multiline
+                numberOfLines={8}
+                value={whatsappCustomerText}
+                onChangeText={setWhatsappCustomerText}
+                style={{ backgroundColor: theme.colors.surface, fontFamily: 'Cairo_400Regular', textAlign: 'right' }}
+                outlineColor={theme.colors.outlineVariant}
+                activeOutlineColor={theme.colors.primary}
+              />
+              <View style={{ marginTop: 24, gap: 12 }}>
+                <AppButton
+                  label={savingWhatsappCustomer ? "جاري الحفظ سحابياً..." : "حفظ الرسالة سحابياً"}
+                  loading={savingWhatsappCustomer}
+                  onPress={handleSaveCustomerWhatsapp}
+                />
+                <TouchableOpacity
+                  disabled={savingWhatsappCustomer}
+                  onPress={handleResetCustomerWhatsapp}
+                  style={{ padding: 12, alignItems: 'center' }}
+                >
+                  <Text style={{ color: theme.colors.primary, fontFamily: 'Cairo_700Bold' }}>
+                    استعادة الرسالة الأصلية
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </ScrollView>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      {/* Modal for Debt WhatsApp Template */}
+      <Modal visible={whatsappDebtModal} animationType="slide" transparent onRequestClose={() => setWhatsappDebtModal(false)}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.editModalOverlay}>
+          <View style={[styles.editModalCard, { backgroundColor: theme.colors.surface, maxHeight: '85%' }]}>
+            <View style={styles.editModalHeader}>
+              <Text variant="titleMedium" style={{ color: theme.colors.onSurface, fontFamily: 'Cairo_700Bold' }}>تعديل رسالة الديون/الأقساط</Text>
+              <TouchableOpacity onPress={() => setWhatsappDebtModal(false)} style={{ padding: 6 }}>
+                <X size={20} color={theme.colors.outline} />
+              </TouchableOpacity>
+            </View>
+            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+              <Text style={{ color: theme.colors.outline, marginBottom: 12, fontSize: 13, fontFamily: 'Cairo_600SemiBold', textAlign: 'left' }}>
+                المتغيرات المتاحة: {`{اسم_العميل}`}, {`{عنوان}`}, {`{المجموع}`}, {`{المسدد}`}, {`{المتبقي}`}, {`{اسم_المتجر}`}
+              </Text>
+              <PaperTextInput
+                mode="outlined"
+                multiline
+                numberOfLines={8}
+                value={whatsappDebtText}
+                onChangeText={setWhatsappDebtText}
+                style={{ backgroundColor: theme.colors.surface, fontFamily: 'Cairo_400Regular', textAlign: 'right' }}
+                outlineColor={theme.colors.outlineVariant}
+                activeOutlineColor={theme.colors.primary}
+              />
+              <View style={{ marginTop: 24, gap: 12 }}>
+                <AppButton
+                  label={savingWhatsappDebt ? "جاري الحفظ سحابياً..." : "حفظ الرسالة سحابياً"}
+                  loading={savingWhatsappDebt}
+                  onPress={handleSaveDebtWhatsapp}
+                />
+                <TouchableOpacity
+                  disabled={savingWhatsappDebt}
+                  onPress={handleResetDebtWhatsapp}
+                  style={{ padding: 12, alignItems: 'center' }}
+                >
+                  <Text style={{ color: theme.colors.primary, fontFamily: 'Cairo_700Bold' }}>
+                    استعادة الرسالة الأصلية
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </ScrollView>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
     </ScrollView>
   );
 }

@@ -358,12 +358,12 @@ export default function SubscriptionScreen() {
 
           {/* Feature List */}
           <View style={styles.featureList}>
-            <ProFeature text="تخزين محلي فائق السرعة + مزامنة سحابية (Supabase)" />
-            <ProFeature text="نسخ احتياطي آلي ومشفر لحماية بياناتك من الضياع" />
-            <ProFeature text="استخدام التطبيق على أكثر من هاتف في نفس الوقت" />
-            <ProFeature text="دعم لوحة تحكم الويب المتكاملة للكمبيوتر (Dashboard)" />
-            <ProFeature text="إدارة حسابات الموظفين ومنح الصلاحيات" />
-            <ProFeature text="إرفاق صور السندات والقوائم بالديون" />
+            <ProFeature text="تخزين محلي فائق السرعة + مزامنة سحابية مستمرة" />
+            <ProFeature text="نسخ احتياطي آلي واسترجاع البيانات عند تسجيل الدخول أو تغيير الهاتف" />
+            <ProFeature text="استخدام الحساب على أكثر من جهاز في نفس الوقت" />
+            <ProFeature text="تخصيص كامل لرسائل الواتساب الذكية للعملاء والديون والأقساط" />
+            <ProFeature text="حفظ وتعديل قوالب الرسائل سحابياً ومحلياً واسترجاعها تلقائياً" />
+            <ProFeature text="إشعارات وتنبيهات بمواعيد سداد الأقساط والديون المستحقة" />
           </View>
 
           {/* Status info */}
@@ -430,9 +430,10 @@ export default function SubscriptionScreen() {
           <View style={styles.featureList}>
             <FreeFeature text="تخزين محلي على جهازك الحالي (SQLite)" active />
             <FreeFeature text="يعمل 100% بدون الحاجة لإنترنت" active />
-            <FreeFeature text="إضافة عملاء وديون غير محدودة" active />
+            <FreeFeature text="إضافة عملاء وديون وأقساط غير محدودة" active />
             <FreeFeature text="بدون مزامنة سحابية أو نسخ احتياطي" active={false} />
-            <FreeFeature text="بدون استخدام أكثر من جهاز بنفس الوقت" active={false} />
+            <FreeFeature text="بدون تخصيص رسائل الواتساب (رسائل افتراضية فقط)" active={false} />
+            <FreeFeature text="بدون استخدام الحساب على أكثر من جهاز في نفس الوقت" active={false} />
           </View>
 
           {!hasActiveSubscription && (

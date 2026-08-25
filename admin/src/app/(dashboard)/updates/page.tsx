@@ -184,7 +184,7 @@ export default function UpdatesPage() {
                 <Label htmlFor="version">رقم الإصدار (Version Name)</Label>
                 <Input
                   id="version"
-                  placeholder="مثال: 1.1.0"
+                  placeholder="مثال: 2.3.0"
                   value={version}
                   onChange={(e) => setVersion(e.target.value)}
                   required
@@ -195,7 +195,7 @@ export default function UpdatesPage() {
                 <Input
                   id="versionCode"
                   type="number"
-                  placeholder="مثال: 2 (رقم صحيح تصاعدي)"
+                  placeholder="مثال: 5 (رقم صحيح تصاعدي)"
                   value={versionCode}
                   onChange={(e) => setVersionCode(e.target.value)}
                   required
