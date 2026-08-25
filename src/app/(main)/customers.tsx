@@ -134,7 +134,7 @@ const CustomerCard = React.memo(function CustomerCard({ item, onPress, onWhatsAp
   return (
     <Animated.View>
       <TouchableOpacity
-        activeOpacity={0.78}
+        activeOpacity={0.8}
         onPress={() => onPress(item)}
         style={[
           styles.card,
@@ -144,69 +144,95 @@ const CustomerCard = React.memo(function CustomerCard({ item, onPress, onWhatsAp
           },
         ]}
       >
-        <View style={styles.avatarWrap}>
-          <Avatar.Text
-            size={48}
-            label={safeName.substring(0, 2)}
-            style={{
-              backgroundColor: theme.colors.primaryContainer,
-            }}
-            color={theme.colors.primary}
-          />
-        </View>
-
-        <View style={styles.cardBody}>
-          <Text variant="titleSmall" style={{ color: theme.colors.onSurface, fontFamily: 'Cairo_700Bold' }} numberOfLines={1}>
-            {safeName}
-          </Text>
-
-          <View style={styles.metaRow}>
-            {item.phone ? (
-              <View style={styles.iconMeta}>
-                <Phone size={12} color={theme.colors.outline} />
-                <Text variant="bodySmall" style={{ color: theme.colors.outline, marginRight: 4 }}>
-                  {item.phone}
-                </Text>
-              </View>
-            ) : null}
-
-            {item.address ? (
-              <View style={[styles.iconMeta, { marginRight: 10 }]}>
-                <MapPin size={12} color={theme.colors.outline} />
-                <Text variant="bodySmall" style={{ color: theme.colors.outline, marginRight: 4 }} numberOfLines={1}>
-                  {item.address}
-                </Text>
-              </View>
-            ) : null}
+        {/* الصف العلوي: الصورة الرمزية + اسم العميل + وسم الدين / خالص */}
+        <View style={styles.cardHeaderRow}>
+          <View style={styles.customerHeaderInfo}>
+            <Avatar.Text
+              size={44}
+              label={safeName.substring(0, 2)}
+              style={{
+                backgroundColor: theme.colors.primaryContainer,
+              }}
+              color={theme.colors.primary}
+            />
+            <View style={styles.nameBlock}>
+              <Text
+                variant="titleSmall"
+                style={{ color: theme.colors.onSurface, fontFamily: 'Cairo_700Bold' }}
+                numberOfLines={1}
+              >
+                {safeName}
+              </Text>
+            </View>
           </View>
-        </View>
-
-        <View style={styles.cardActionsRow}>
-          {item.phone ? (
-            <>
-              <TouchableOpacity
-                activeOpacity={0.7}
-                onPress={() => onWhatsApp(item)}
-                style={[styles.actionBtn, { backgroundColor: '#DCFCE7' }]}
-              >
-                <MessageCircle size={16} color="#16A34A" />
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                activeOpacity={0.7}
-                onPress={() => onCall(item.phone)}
-                style={[styles.actionBtn, { backgroundColor: theme.colors.primaryContainer }]}
-              >
-                <PhoneCall size={15} color={theme.colors.primary} />
-              </TouchableOpacity>
-            </>
-          ) : null}
 
           <View style={[styles.debtTag, { backgroundColor: badgeBg }]}>
             <Text variant="labelSmall" style={{ color: badgeText, fontFamily: 'Cairo_700Bold' }}>
               {hasDebt ? formatCurrency(item.total_debt) : ar.customers.settled}
             </Text>
           </View>
+        </View>
+
+        {/* خط فاصل أنيق */}
+        <View style={[styles.cardDivider, { backgroundColor: theme.colors.outlineVariant }]} />
+
+        {/* الصف السفلي: الهاتف والعنوان في جهة + أزرار الواتساب والاتصال في جهة */}
+        <View style={styles.cardBottomRow}>
+          <View style={styles.metaContainer}>
+            {item.phone ? (
+              <View style={styles.iconMeta}>
+                <Phone size={13} color={theme.colors.outline} />
+                <Text
+                  variant="bodySmall"
+                  style={{ color: theme.colors.outline, marginRight: 6, fontFamily: 'Cairo_500Medium' }}
+                  numberOfLines={1}
+                >
+                  {item.phone}
+                </Text>
+              </View>
+            ) : null}
+
+            {item.address ? (
+              <View style={[styles.iconMeta, { marginTop: item.phone ? 4 : 0 }]}>
+                <MapPin size={13} color={theme.colors.outline} />
+                <Text
+                  variant="bodySmall"
+                  style={{ color: theme.colors.outline, marginRight: 6, fontFamily: 'Cairo_500Medium' }}
+                  numberOfLines={1}
+                >
+                  {item.address}
+                </Text>
+              </View>
+            ) : (
+              !item.phone && (
+                <Text variant="bodySmall" style={{ color: theme.colors.outline, fontFamily: 'Cairo_400Regular' }}>
+                  لا توجد معلومات اتصال
+                </Text>
+              )
+            )}
+          </View>
+
+          {item.phone ? (
+            <View style={styles.cardActionsRow}>
+              <TouchableOpacity
+                activeOpacity={0.7}
+                onPress={() => onWhatsApp(item)}
+                style={[styles.actionBtn, { backgroundColor: '#DCFCE7' }]}
+                hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+              >
+                <MessageCircle size={17} color="#16A34A" />
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                activeOpacity={0.7}
+                onPress={() => onCall(item.phone)}
+                style={[styles.actionBtn, { backgroundColor: theme.colors.primaryContainer }]}
+                hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+              >
+                <PhoneCall size={16} color={theme.colors.primary} />
+              </TouchableOpacity>
+            </View>
+          ) : null}
         </View>
       </TouchableOpacity>
     </Animated.View>
@@ -998,31 +1024,65 @@ const styles = StyleSheet.create({
   chipText: { fontSize: 12, fontFamily: 'Cairo_600SemiBold' },
   listContent: { padding: 16, paddingTop: 4 },
   card: {
-    flexDirection: 'row',
-    alignItems: 'center',
     padding: 14,
-    borderRadius: 20,
-    marginBottom: 10,
+    borderRadius: 22,
+    marginBottom: 12,
     borderWidth: 1,
     elevation: 1,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.03,
+    shadowRadius: 8,
   },
-  avatarWrap: { marginLeft: 2 },
-  cardBody: { flex: 1, paddingHorizontal: 12 },
-  metaRow: { flexDirection: 'row', alignItems: 'center', marginTop: 4 },
-  iconMeta: { flexDirection: 'row', alignItems: 'center' },
+  cardHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  customerHeaderInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    flex: 1,
+    marginRight: 8,
+  },
+  nameBlock: {
+    flex: 1,
+  },
+  cardDivider: {
+    height: 1,
+    opacity: 0.35,
+    marginVertical: 10,
+  },
+  cardBottomRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  metaContainer: {
+    flex: 1,
+    paddingRight: 8,
+  },
+  iconMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
   cardActionsRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 8,
   },
   actionBtn: {
-    width: 34,
-    height: 34,
+    width: 36,
+    height: 36,
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  debtTag: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16 },
+  debtTag: {
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: 14,
+  },
   fab: { position: 'absolute', right: 20, borderRadius: 28 },
   emptyState: {
     flex: 1,
